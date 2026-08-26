@@ -110,25 +110,25 @@ This document records the technology and architecture decisions that are settled
 
 ## Engineering Tooling
 
-| Area | Final choice | Purpose |
-| --- | --- | --- |
-| Language | TypeScript | Shared static types across UI and server code |
-| Web application | Next.js 16+ App Router, React | Full-stack application and user interfaces |
-| Styling | Tailwind CSS | Consistent, efficient UI implementation |
-| Database | PostgreSQL | Relational, transactional source of truth |
-| Data access | Prisma + Prisma Migrate | Typed queries and versioned schema changes |
-| Staff authentication | Better Auth | Persistent Admin/Staff identity and sessions |
-| Guest identity | Opaque database-backed `GuestSession` | Anonymous, revocable, bill-scoped participation |
-| Shared updates | Controlled ~2-second polling | Lightweight live-ish shared bill state |
-| Payments | `PaymentProvider` + `MockPaymentProvider` | Provider-independent, production-equivalent lifecycle |
-| Runtime validation | Zod | Validate external inputs and configuration |
-| Unit/integration tests | Vitest | Domain, service, persistence, and boundary tests |
-| End-to-end tests | Playwright | Browser validation of staff and guest journeys |
-| Package manager | pnpm | Reproducible dependency and script management |
-| Version control | Git + GitHub | Traceable development history and collaboration host |
-| CI | GitHub Actions | Lint, type-check, test, and build on changes |
-| Static analysis | ESLint | Code-quality checks |
-| Formatting | Prettier | Consistent source formatting |
+| Area                   | Final choice                              | Purpose                                               |
+| ---------------------- | ----------------------------------------- | ----------------------------------------------------- |
+| Language               | TypeScript                                | Shared static types across UI and server code         |
+| Web application        | Next.js 16+ App Router, React             | Full-stack application and user interfaces            |
+| Styling                | Tailwind CSS                              | Consistent, efficient UI implementation               |
+| Database               | PostgreSQL                                | Relational, transactional source of truth             |
+| Data access            | Prisma + Prisma Migrate                   | Typed queries and versioned schema changes            |
+| Staff authentication   | Better Auth                               | Persistent Admin/Staff identity and sessions          |
+| Guest identity         | Opaque database-backed `GuestSession`     | Anonymous, revocable, bill-scoped participation       |
+| Shared updates         | Controlled ~2-second polling              | Lightweight live-ish shared bill state                |
+| Payments               | `PaymentProvider` + `MockPaymentProvider` | Provider-independent, production-equivalent lifecycle |
+| Runtime validation     | Zod                                       | Validate external inputs and configuration            |
+| Unit/integration tests | Vitest                                    | Domain, service, persistence, and boundary tests      |
+| End-to-end tests       | Playwright                                | Browser validation of staff and guest journeys        |
+| Package manager        | pnpm                                      | Reproducible dependency and script management         |
+| Version control        | Git + GitHub                              | Traceable development history and collaboration host  |
+| CI                     | GitHub Actions                            | Lint, type-check, test, and build on changes          |
+| Static analysis        | ESLint                                    | Code-quality checks                                   |
+| Formatting             | Prettier                                  | Consistent source formatting                          |
 
 ## Local Development
 
@@ -136,19 +136,19 @@ Docker is not part of DENK's application architecture or production design. Dock
 
 ## Intentionally Rejected for V1
 
-| Rejected choice | Why it is not needed in V1 |
-| --- | --- |
-| Separate NestJS, Fastify, or Spring backend | Adds another service, deployment, authentication boundary, and duplicated contracts without a current requirement for process separation |
-| Supabase Realtime | Adds an external realtime subsystem when controlled polling meets the freshness requirement |
-| WebSockets | Adds connection lifecycle and infrastructure complexity that correctness does not require |
-| Server-Sent Events | Reserve only as a later option if measured polling behavior proves insufficient |
-| Redis | No immediate caching, coordination, or ephemeral-data requirement that PostgreSQL cannot reasonably handle |
-| Queues or Kafka | No V1 workload requires separate asynchronous messaging infrastructure |
-| Microservices | The product and team do not need independent service ownership or deployment |
-| GraphQL | DENK does not need a flexible graph query layer; focused server boundaries are simpler |
-| Event sourcing | Versioned relational state and explicit payment records are sufficient; rebuilding all state from events adds disproportionate complexity |
-| Kubernetes | V1 has no orchestration requirement that justifies it |
-| Real-money payment processing | Initial V1 validates the complete lifecycle through the production-equivalent mock; iyzico Sandbox comes later |
+| Rejected choice                             | Why it is not needed in V1                                                                                                                |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Separate NestJS, Fastify, or Spring backend | Adds another service, deployment, authentication boundary, and duplicated contracts without a current requirement for process separation  |
+| Supabase Realtime                           | Adds an external realtime subsystem when controlled polling meets the freshness requirement                                               |
+| WebSockets                                  | Adds connection lifecycle and infrastructure complexity that correctness does not require                                                 |
+| Server-Sent Events                          | Reserve only as a later option if measured polling behavior proves insufficient                                                           |
+| Redis                                       | No immediate caching, coordination, or ephemeral-data requirement that PostgreSQL cannot reasonably handle                                |
+| Queues or Kafka                             | No V1 workload requires separate asynchronous messaging infrastructure                                                                    |
+| Microservices                               | The product and team do not need independent service ownership or deployment                                                              |
+| GraphQL                                     | DENK does not need a flexible graph query layer; focused server boundaries are simpler                                                    |
+| Event sourcing                              | Versioned relational state and explicit payment records are sufficient; rebuilding all state from events adds disproportionate complexity |
+| Kubernetes                                  | V1 has no orchestration requirement that justifies it                                                                                     |
+| Real-money payment processing               | Initial V1 validates the complete lifecycle through the production-equivalent mock; iyzico Sandbox comes later                            |
 
 ## Validation Notes
 
