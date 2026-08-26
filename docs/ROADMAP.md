@@ -1,0 +1,471 @@
+# DENK V1 Developer Roadmap
+
+## How to Use This Roadmap
+
+I am the developer of DENK. I will create and modify files, run commands and migrations, inspect errors, execute tests, operate Git, and integrate every change on my computer. AI acts as a technical mentor and pair-programming advisor.
+
+For each meaningful step, the working rhythm is:
+
+> **Explain → Tell me what to do → I perform it → Verify → Continue**
+
+The roadmap describes what to build, why the order matters, and how to prove each stage works. It intentionally contains no complete implementation. When a stage begins, it should be broken into small, verifiable actions. Correctness-critical work—authorization, guest credentials, transactions, concurrency, money, payment states, idempotency, and callbacks—must be understood before moving on.
+
+The target is a narrow, polished **Scan → Join → Split → Pay → Leave** V1. Prefer vertical progress and introduce schema or abstractions only when a working behavior needs them.
+
+## Stage 1 — Repository & Development Foundation
+
+### Goal
+
+Create a reproducible repository in which a clean checkout can be installed, configured, connected to PostgreSQL, checked, tested, and built.
+
+### What I Will Implement
+
+1. Initialize Git and create the GitHub repository with an intentional default branch and ignore rules.
+2. Scaffold Next.js 16+ App Router with TypeScript, React, Tailwind CSS, ESLint, and pnpm.
+3. Add Prettier and define a small, consistent set of package scripts for formatting, linting, type-checking, testing, and building.
+4. Establish the PostgreSQL development environment. Optionally use Docker Compose only to run local PostgreSQL.
+5. Add Prisma, create the initial connection/configuration, and establish the migration workflow without designing the full domain schema.
+6. Add Zod-based environment validation and document required variables using safe example values.
+7. Configure Vitest and one small test that proves the runner and application aliases work.
+8. Configure Playwright and one smoke test that proves the application starts and is reachable.
+9. Add GitHub Actions that install with the lockfile and run formatting/lint checks, type-checking, tests, and the production build.
+10. Write concise local setup instructions that another developer could follow from a clean checkout.
+
+### Engineering Concepts I Should Understand
+
+- dependency locking and reproducible builds;
+- development, test, and production configuration boundaries;
+- environment secrets versus safe examples;
+- database migrations as version-controlled history;
+- the difference between unit, integration, and end-to-end tests;
+- CI as repeatable verification, not a separate development environment.
+
+### Key Tests / Verification
+
+- Follow the setup instructions from a clean checkout or equivalent fresh directory.
+- Confirm installation uses the committed pnpm lockfile.
+- Confirm the application can connect to a fresh PostgreSQL database and apply migrations.
+- Run formatting/lint checks, type-checking, Vitest, Playwright smoke test, and production build locally.
+- Confirm the same checks pass in GitHub Actions.
+- Confirm secrets and local database data are not committed.
+
+### Suggested Git Checkpoints
+
+- `chore: scaffold Next.js development foundation`
+- `chore: add database and test tooling`
+- `ci: verify lint types tests and build`
+
+### Exit Condition
+
+A clean checkout can follow documented steps to install dependencies, start/configure PostgreSQL, apply migrations, run all checks and tests, and produce a successful build in both local development and CI.
+
+## Stage 2 — First Vertical Slice: Staff Opens a Bill, Guest Views It
+
+### Goal
+
+Deliver the smallest meaningful end-to-end DENK capability: **Staff authenticates → opens a table session → enters bill items → anonymous guest joins → guest sees the bill**.
+
+### What I Will Implement
+
+1. Define only the minimum domain vocabulary and Prisma models required for a restaurant, staff user, table, active table/bill session, bill item, and guest session.
+2. Add Better Auth for restaurant-side sessions and seed or create the minimum Admin/Staff identity needed for development.
+3. Implement a thin authorization path that proves a staff user belongs to the restaurant whose table they operate.
+4. Build a staff view to open one table session and manually create the current bill with item name, quantity, and monetary unit price.
+5. Create a stable QR/table entry route and require the active bill's short temporary join code.
+6. On successful join, issue an opaque random guest credential, store only its hash, bind the `GuestSession` to the active table/bill session, and set the credential in a Secure, HttpOnly cookie.
+7. Build the guest bill view using server-side application services rather than querying Prisma from UI components.
+8. Show useful not-found, inactive-session, invalid-code, and expired-session states.
+9. Add a Playwright path covering the entire first slice.
+
+### Engineering Concepts I Should Understand
+
+- vertical slices and evolving a schema from behavior;
+- authentication versus authorization;
+- application/domain service boundaries;
+- integer minor units or another exact monetary representation—never floating-point arithmetic for money;
+- high-entropy bearer tokens, hashing, cookies, expiry, and resource scoping;
+- why URL identifiers and client state are not authorization.
+
+### Key Tests / Verification
+
+- An unauthenticated person cannot use staff operations.
+- Staff from another restaurant cannot open or edit the table session.
+- An invalid table, inactive session, wrong join code, or invalid/expired guest cookie is rejected without leaking bill data.
+- The database contains a guest-token hash, never the raw bearer token.
+- Prices round-trip exactly in the chosen monetary representation.
+- The Playwright test proves staff can open and populate a bill and a fresh anonymous browser can join and view it.
+
+### Suggested Git Checkpoints
+
+- `feat: add staff authentication and restaurant scope`
+- `feat: open table sessions and enter bill items`
+- `feat: join active bill with anonymous guest session`
+
+### Exit Condition
+
+An authorized staff user can create the minimal active bill, and a guest with the correct table access and join code can anonymously receive a scoped session and view that bill end to end.
+
+## Stage 3 — Restaurant Operations, Tables, and Bill Integrity
+
+### Goal
+
+Turn the first slice into a safe restaurant workflow for managing tables and correcting an active bill without weakening tenant or financial boundaries.
+
+### What I Will Implement
+
+1. Complete application-level `ADMIN` and `STAFF` authorization rules and central restaurant/resource ownership checks.
+2. Let Admin manage restaurant tables and their stable QR identities; let authorized restaurant users view operational table state.
+3. Define lifecycle rules for opening, identifying, and closing table/bill sessions, including the rule preventing ambiguous simultaneous active sessions for one table.
+4. Add staff bill operations for item creation, correction, quantity changes, and removal while the changes are still financially safe.
+5. Handle multiple quantities of identical products as explicit quantities/units suitable for later allocation.
+6. Decide and enforce what staff may change after allocations or successful payments exist; preserve completed payment history and prevent casual financial rewriting.
+7. Add audit-friendly timestamps and records where needed to explain operational state changes without building event sourcing.
+
+### Engineering Concepts I Should Understand
+
+- role-based and resource-based authorization;
+- multi-tenant ownership checks;
+- database uniqueness and lifecycle invariants;
+- mutable operational data versus immutable financial truth;
+- safe schema evolution through small migrations.
+
+### Key Tests / Verification
+
+- Admin and Staff capabilities match the finalized role boundaries.
+- Cross-restaurant reads and mutations fail even when valid resource IDs are supplied directly.
+- Two active sessions cannot be opened for the same table if the lifecycle forbids it.
+- Invalid prices, quantities, and state transitions are rejected server-side.
+- Corrections before allocation work; unsafe corrections after allocation/payment are blocked or handled by the explicit rule.
+- A completed payment record cannot be edited or erased through normal bill-management operations.
+
+### Suggested Git Checkpoints
+
+- `feat: enforce restaurant roles and ownership`
+- `feat: manage tables and table-session lifecycle`
+- `feat: protect active bill corrections`
+
+### Exit Condition
+
+Restaurant users can safely manage tables and active bills within their authorized scope, and bill edits cannot bypass lifecycle or completed-payment invariants.
+
+## Stage 4 — Whole-Item Allocation and Payable Calculation
+
+### Goal
+
+Allow guests to claim, release, and understand responsibility for whole items or units, with the server calculating exactly what each guest owes.
+
+### What I Will Implement
+
+1. Introduce the minimum allocation model needed to represent ownership of a whole item unit by a guest session.
+2. Implement application services for claim and release operations, with guest-session and active-bill authorization on every mutation.
+3. Support multiple quantities so guests can claim individual units without confusing them with unrelated identical items.
+4. Add server-derived availability, claimed state, unpaid state, and the current guest's payable amount.
+5. Prevent release or reassignment once an allocation is part of a pending or successful payment according to the payment-safety rules.
+6. Keep monetary calculation in domain/application code and return display-ready state to the UI.
+7. Update the guest interface so a person can select their items, review their current share, correct an unpaid mistake, and optionally cover another person's unclaimed items by claiming them.
+
+### Engineering Concepts I Should Understand
+
+- domain invariants and aggregate boundaries;
+- exact money arithmetic and derived totals;
+- command versus query responsibilities;
+- server-side trust boundaries;
+- the difference between allocation, payment attempt, and settlement.
+
+### Key Tests / Verification
+
+- A guest can claim and release available whole units and sees the exact expected payable amount.
+- A guest cannot mutate another bill or use an expired/revoked guest session.
+- Claimed, paid, and remaining amounts always reconcile to the bill total.
+- Duplicate or invalid mutation requests do not create impossible quantities.
+- UI-supplied prices or payable totals are ignored; the server derives them from current database state.
+
+### Suggested Git Checkpoints
+
+- `feat: allocate whole bill-item units`
+- `feat: calculate guest payable amounts`
+
+### Exit Condition
+
+Multiple guests can allocate distinct whole items/units, correct unpaid selections, and see server-authoritative payable and remaining totals that reconcile exactly.
+
+## Stage 5 — Shared and Partial Allocation
+
+### Goal
+
+Support shared dishes and partial responsibility without rounding errors, over-allocation, or an interface that requires guests to calculate externally.
+
+### What I Will Implement
+
+1. Define the V1 representation for sharing an item or unit, including how portions are expressed and how exact minor-unit amounts are assigned.
+2. Establish a deterministic remainder/rounding rule so the sum of portions always equals the item's price.
+3. Extend allocation services to add, change, and release unpaid partial allocations while enforcing the item's remaining allocatable amount.
+4. Support practical cases such as two people sharing a dish, four people sharing a bottle, and one guest paying multiple shares.
+5. Present available, allocated, and paid portions clearly in the shared bill UI.
+6. Preserve a single server-derived payable calculation across whole and partial allocations.
+
+### Engineering Concepts I Should Understand
+
+- allocation models: ratios versus concrete monetary amounts;
+- deterministic rounding and conservation of money;
+- invariants across whole and partial claims;
+- why financial rules belong outside presentation code.
+
+### Key Tests / Verification
+
+- Two-way and four-way splits reconcile exactly, including prices that do not divide evenly.
+- Whole plus partial allocations can never exceed the item total.
+- Changing or releasing an unpaid portion updates all derived totals correctly.
+- A guest can cover more than one portion without inventing or losing money.
+- Property-style or table-driven tests cover many prices, quantities, and split counts and always preserve the total.
+
+### Suggested Git Checkpoints
+
+- `feat: support partial item allocation`
+- `test: verify split rounding and conservation`
+
+### Exit Condition
+
+Whole and shared allocations work together, every split has a deterministic explanation, and all per-guest and remaining amounts sum exactly to the authoritative bill total.
+
+## Stage 6 — Concurrency and Shared-State Refresh
+
+### Goal
+
+Make simultaneous guest activity safe at the database boundary and reasonably fresh in the browser.
+
+### What I Will Implement
+
+1. Identify race-prone allocation operations and express their invariants as database constraints and transactional application operations.
+2. Choose and document an appropriate PostgreSQL concurrency strategy for each critical mutation, such as conditional writes, locking, or isolation/retry behavior.
+3. Return explicit conflict outcomes when another guest wins a race; refresh authoritative state afterward.
+4. Add controlled polling at approximately two-second intervals only while the shared bill view is active.
+5. Refresh immediately after allocation and bill mutations rather than waiting for the next poll.
+6. Pause or reduce polling when the page is not active where practical, prevent overlapping requests, and handle transient failures without corrupting local state.
+
+### Engineering Concepts I Should Understand
+
+- race conditions, lost updates, oversubscription, and stale reads;
+- atomicity, isolation, database constraints, row locks, and retry policy;
+- optimistic UI versus authoritative mutation results;
+- polling lifecycle and request coordination;
+- why realtime transport is unrelated to financial correctness.
+
+### Key Tests / Verification
+
+- Launch concurrent requests for the last available item/portion; at most the valid amount is allocated.
+- Repeated concurrent runs preserve database invariants and exact totals.
+- A losing guest receives a conflict, refreshes, and sees the winning state.
+- Two browser contexts observe one another's changes within the expected polling window.
+- Correctness tests still pass with polling disabled or delayed.
+- Polling stops when the shared view unmounts and does not create overlapping request buildup.
+
+### Suggested Git Checkpoints
+
+- `fix: make allocation mutations concurrency-safe`
+- `feat: refresh shared bills with controlled polling`
+
+### Exit Condition
+
+Concurrent claims cannot over-allocate or corrupt totals, and active guests see shared changes promptly while PostgreSQL—not polling—remains authoritative.
+
+## Stage 7 — Payment Boundary, State Machine, and Mock Provider
+
+### Goal
+
+Create a provider-independent, production-equivalent payment lifecycle without processing real money.
+
+### What I Will Implement
+
+1. Define a small `PaymentProvider` contract from DENK's actual needs: create an attempt and interpret/verify an authoritative provider event or result.
+2. Define the DENK payment state machine, including permitted transitions for pending/delayed, successful, failed, and cancelled outcomes.
+3. Add payment-attempt persistence with internal ID, provider reference, guest/bill scope, immutable server-calculated amount, state, idempotency key, and relevant timestamps.
+4. Implement `MockPaymentProvider` with deterministic scenarios for success, pending then success, failure, cancellation, delays, and repeated responses.
+5. Build payment creation through an application service that recalculates current payable allocations and rejects client control of amount or ownership.
+6. Implement idempotent creation so retries with the same logical request return the same attempt and incompatible reuse is rejected.
+7. Add duplicate-request protection and clear guest feedback for retryable versus terminal outcomes.
+
+### Engineering Concepts I Should Understand
+
+- dependency inversion and provider adapters;
+- finite-state machines and valid transitions;
+- idempotency keys, retry semantics, and uniqueness constraints;
+- server-authoritative amounts;
+- pending versus terminal payment states;
+- recording financial attempts for diagnosis and reconciliation.
+
+### Key Tests / Verification
+
+- The application payment service can use a provider test double and contains no iyzico-specific types.
+- A manipulated client amount cannot change the payment amount.
+- Repeating the same creation request returns one logical payment attempt.
+- Reusing an idempotency key for incompatible bill, guest, or amount data is rejected.
+- Each allowed mock scenario reaches only valid state transitions; invalid transitions fail.
+- Creating or failing a payment does not by itself mark allocations as settled.
+
+### Suggested Git Checkpoints
+
+- `feat: define payment provider and state machine`
+- `feat: add production-equivalent mock payments`
+- `test: verify payment creation idempotency`
+
+### Exit Condition
+
+A guest can initiate a server-priced mock payment that moves through a valid, persisted lifecycle with idempotent creation, while no initiation response alone settles the bill.
+
+## Stage 8 — Authoritative Confirmation and Settlement
+
+### Goal
+
+Make simulated provider callbacks the sole success authority and settle allocations exactly once, even with duplicates or concurrent delivery.
+
+### What I Will Implement
+
+1. Add a simulated provider callback/webhook boundary that verifies the mock provider's authenticity mechanism before processing data.
+2. Normalize provider events into provider-independent application inputs.
+3. Persist enough provider-event identity to detect duplicate delivery and retain useful diagnostic history.
+4. In one database transaction, validate the payment's current state and amount, transition it when legal, settle its frozen/associated allocations, and update derived bill settlement state.
+5. Make duplicate callbacks return a safe idempotent result without repeating settlement.
+6. Protect concurrent confirmation processing and prevent two payment attempts from settling the same allocation.
+7. Define guest-facing behavior for pending, success, failed, and cancelled payments and allow safe retry only when business rules permit it.
+8. Determine whole-bill completion solely from authoritative settled amounts, never from client navigation or a success page.
+
+### Engineering Concepts I Should Understand
+
+- webhook authenticity and untrusted external input;
+- at-least-once delivery and idempotent consumers;
+- atomic state transition plus settlement;
+- uniqueness constraints and double-spend protection;
+- out-of-order, duplicate, and concurrent events;
+- redirect UX versus provider authority.
+
+### Key Tests / Verification
+
+- A success page or client request cannot mark a payment successful.
+- Invalidly authenticated, unknown, mismatched-amount, or illegal-transition callbacks are rejected and do not settle anything.
+- The same callback delivered repeatedly settles allocations once.
+- Two concurrent callback handlers cannot double-settle.
+- Two payment attempts targeting overlapping allocations cannot both settle them.
+- Failed and cancelled attempts leave eligible amounts payable; pending attempts do not prematurely free or settle protected allocations.
+- The bill becomes fully settled only when authoritative successful settlements cover the exact amount.
+
+### Suggested Git Checkpoints
+
+- `feat: process authoritative mock payment callbacks`
+- `feat: settle allocations atomically`
+- `test: prevent duplicate and concurrent settlement`
+
+### Exit Condition
+
+Authenticated mock-provider confirmation drives legal payment transitions and atomic settlement exactly once; duplicates, races, and client claims cannot create double payment or false bill completion.
+
+## Stage 9 — Complete Scan → Join → Split → Pay → Leave Experience
+
+### Goal
+
+Integrate the staff and guest capabilities into a coherent, understandable V1 journey for multiple people at one table.
+
+### What I Will Implement
+
+1. Refine the QR/table entry and temporary-code flow for fast anonymous joining, with clear recovery for inactive or invalid sessions.
+2. Present bill items, quantities, shared portions, other guests' claimed/paid state, current guest payable amount, and table remaining amount without exposing unnecessary guest or payment data.
+3. Connect whole and partial allocation, review, payment, pending/failure/retry, success, and leave behavior into one guest journey.
+4. Refresh immediately after mutations and continue controlled polling during active shared views.
+5. Give staff a clear operational view of bill entry, allocations, payments, remaining balance, and fully settled state.
+6. Handle the finalized V1 failure cases: stale selections, concurrent claims, expired guest sessions, bill corrections that are no longer safe, failed/cancelled/pending payments, duplicate submissions, and network retries.
+7. Make leaving require no account cleanup ceremony; retain only the server-side records needed for expiry, authorization, audit, and payment correctness.
+8. Add focused accessibility, responsive layout, loading, empty, and error states for restaurant use on phones.
+
+### Engineering Concepts I Should Understand
+
+- task-focused UX and progressive disclosure;
+- recovery-oriented error design;
+- privacy minimization in shared state;
+- accessibility and mobile interaction;
+- integration boundaries between UI, application services, providers, and persistence.
+
+### Key Tests / Verification
+
+- In separate browser contexts, staff creates a bill and multiple anonymous guests join, allocate whole and shared items, observe updates, and pay independently.
+- One guest can pay the whole remaining bill by allocating the remaining eligible amount.
+- A guest can correct an unpaid selection, but cannot alter paid responsibility.
+- Stale or concurrent actions produce an understandable refresh/retry path.
+- A failed or cancelled payment can recover safely; pending status is represented honestly.
+- No permanent customer account is created and one table's guest cannot see another table.
+- The staff view reaches a correct fully settled state after all successful payments.
+
+### Suggested Git Checkpoints
+
+- `feat: integrate guest split and payment journey`
+- `feat: complete staff bill-settlement view`
+- `fix: harden shared-flow recovery states`
+
+### Exit Condition
+
+Realistic multi-browser use completes **Scan → Join → Split → Pay → Leave** without a guest account, manual calculation, cross-session leakage, or an incorrect financial state.
+
+## Stage 10 — Security, E2E Validation, and V1 Completion
+
+### Goal
+
+Prove the V1 invariants, close implementation gaps, and leave a clean, explainable repository ready for demonstration and later real-provider validation.
+
+### What I Will Implement
+
+1. Review every server boundary for Zod validation, authentication, authorization, restaurant ownership, guest-session scope, and safe error behavior.
+2. Review cookie attributes, token entropy and hashing, guest expiry/revocation, callback authentication, secret handling, and sensitive logging.
+3. Build an authorization matrix and automated negative tests for cross-restaurant, cross-table, cross-bill, role, and anonymous access attempts.
+4. Expand integration tests around allocation conservation, bill edits, transactions, concurrency, exact money, payment transitions, idempotency, callbacks, and settlement.
+5. Add at least one Playwright test for the full happy path and focused E2E tests for the highest-risk failure journeys using separate browser contexts.
+6. Verify clean database creation and migration, deterministic test data, CI reliability, production build behavior, and documented local setup.
+7. Remove accidental abstractions and dead code, clarify module names and boundaries, and document only the operational knowledge needed to run and explain V1.
+8. Review the Git history and final documentation so the architecture, trade-offs, failures, and tests can be explained in my own words.
+
+### Engineering Concepts I Should Understand
+
+- threat modeling and defense in depth;
+- positive and negative authorization testing;
+- test pyramid and risk-based coverage;
+- deterministic concurrency and idempotency testing;
+- observability without leaking secrets;
+- definition of done versus feature presence.
+
+### Key Tests / Verification
+
+- CI passes from a clean checkout: install, database setup/migrations, lint/format checks, type-check, tests, and build.
+- Automated tests prove cross-restaurant and cross-table isolation and reject forged/expired guest credentials.
+- Concurrent allocation and settlement stress tests preserve every invariant.
+- Payment tests cover success, pending/delayed success, failure, cancellation, duplicate creation, duplicate callbacks, invalid callbacks, and concurrent confirmations.
+- The complete E2E flow runs through separate staff and guest browser contexts.
+- Financial correctness still holds when polling is slow, stopped, or stale.
+- No V1 code depends on iyzico, Redis, realtime infrastructure, queues, microservices, or other rejected components.
+- I can explain the modular boundaries, data model as implemented, key transactions, authorization rules, idempotency design, test strategy, and major Git checkpoints.
+
+### Suggested Git Checkpoints
+
+- `test: cover V1 security and financial invariants`
+- `test: validate complete scan to leave journey`
+- `chore: finalize DENK V1 documentation and cleanup`
+
+### Exit Condition
+
+All V1 definition-of-done checks pass locally and in CI; the full journey is demonstrable; security, concurrency, payment, and settlement invariants are automated; and the repository is understandable without adding non-V1 infrastructure.
+
+## Validation Notes
+
+No blocking inconsistencies found.
+
+Roadmap validation confirms:
+
+- polling only improves freshness; financial correctness remains inside PostgreSQL/application transactions;
+- concurrent allocation is introduced with explicit server/database protection before being considered complete;
+- guests use a separate opaque, hashed, database-backed session rather than Better Auth;
+- payment success and settlement require an authenticated provider callback, not a client claim or redirect;
+- `MockPaymentProvider` exercises realistic states, creation idempotency, retry behavior, duplicate callbacks, and double-settlement protection;
+- payment application logic depends on `PaymentProvider`, not iyzico;
+- React components present state and invoke boundaries but do not own bill, allocation, authorization, or payment rules;
+- the schema evolves with vertical behavior instead of being completely designed up front;
+- no stage introduces infrastructure that DENK V1 does not require; and
+- every stage gives me meaningful implementation direction and verification without becoming a generated-code tutorial.
+
+Requirements engineering, architecture decisions, technology selection, and roadmap planning are complete for DENK V1. The next phase is implementation, beginning with **Stage 1 — Repository & Development Foundation**, using the mentor-guided workflow described above.
