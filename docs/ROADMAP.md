@@ -44,7 +44,7 @@ Create a reproducible repository in which a clean checkout can be installed, con
 
 - Follow the setup instructions from a clean checkout or equivalent fresh directory.
 - Confirm installation uses the committed pnpm lockfile.
-- Confirm the application can connect to a fresh PostgreSQL database and apply migrations.
+- Confirm the application can connect to a fresh PostgreSQL database and that the Prisma configuration and schema validate and generate a client. Once the first meaningful migration exists, confirm committed migrations apply to a fresh database.
 - Run formatting/lint checks, type-checking, Vitest, Playwright smoke test, and production build locally.
 - Confirm the same checks pass in GitHub Actions.
 - Confirm secrets and local database data are not committed.
@@ -57,7 +57,19 @@ Create a reproducible repository in which a clean checkout can be installed, con
 
 ### Exit Condition
 
-A clean checkout can follow documented steps to install dependencies, start/configure PostgreSQL, apply migrations, run all checks and tests, and produce a successful build in both local development and CI.
+A clean checkout can follow documented steps to install dependencies, start/configure PostgreSQL, validate the migration tooling, run all checks and tests, and produce a successful build locally and in CI. Stage 1 is complete as DENK's development foundation. Because Stage 1 intentionally contains no domain schema, migration application becomes concretely testable when Stage 2 introduces the first meaningful migration; an empty migration will not be created merely to satisfy this wording.
+
+## Pre-Stage-2 Hardening Transition
+
+This is a small repository-hardening transition discovered during the Stage 1 review, not a reopening of Stage 1 or a separate product phase. Before normal Stage 2 product implementation:
+
+1. Protect `main` so changes arrive through pull requests and the existing `Verify` GitHub Actions check must succeed before merge. Require zero approving reviews for the current solo-developer workflow, block force pushes and deletion of `main`, and apply the rule to the repository owner. Do not add CODEOWNERS, signed-commit requirements, merge queues, mandatory external review, or unrelated governance controls.
+2. Bind the local PostgreSQL port to `127.0.0.1:5432:5432`, because no DENK development requirement needs database access from another machine. The `denk/denk` credentials remain acceptable only for isolated local development with non-sensitive, disposable data; they must never become staging or production credentials.
+3. Extend clean-runner CI verification so `docker compose config`, Prisma configuration/schema validation, and Prisma Client generation succeed before Stage 2 product work begins.
+
+The transition is complete when these three changes are merged through the normal **branch → pull request → `Verify` CI → merge** workflow and the protected-branch rule is confirmed effective.
+
+When Stage 2 creates its first meaningful schema migration, CI will add the second database-verification level: start a fresh PostgreSQL database, apply all committed migrations non-interactively, verify migration state, and run database-backed integration tests. That migration belongs to the first vertical slice and must contain only schema required by that behavior.
 
 ## Stage 2 — First Vertical Slice: Staff Opens a Bill, Guest Views It
 
@@ -67,7 +79,7 @@ Deliver the smallest meaningful end-to-end DENK capability: **Staff authenticate
 
 ### What I Will Implement
 
-1. Define only the minimum domain vocabulary and Prisma models required for a restaurant, staff user, table, active table/bill session, bill item, and guest session.
+1. Define only the minimum domain vocabulary and Prisma models required for a restaurant, staff user, table, active table/bill session, bill item, and guest session; create the first meaningful migration and add fresh-database migration verification to CI.
 2. Add Better Auth for restaurant-side sessions and seed or create the minimum Admin/Staff identity needed for development.
 3. Implement a thin authorization path that proves a staff user belongs to the restaurant whose table they operate.
 4. Build a staff view to open one table session and manually create the current bill with item name, quantity, and monetary unit price.
@@ -93,6 +105,7 @@ Deliver the smallest meaningful end-to-end DENK capability: **Staff authenticate
 - An invalid table, inactive session, wrong join code, or invalid/expired guest cookie is rejected without leaking bill data.
 - The database contains a guest-token hash, never the raw bearer token.
 - Prices round-trip exactly in the chosen monetary representation.
+- On a clean CI PostgreSQL service, all committed migrations apply non-interactively, Prisma reports the expected migration state, and database-backed integration tests pass.
 - The Playwright test proves staff can open and populate a bill and a fresh anonymous browser can join and view it.
 
 ### Suggested Git Checkpoints
@@ -468,4 +481,4 @@ Roadmap validation confirms:
 - no stage introduces infrastructure that DENK V1 does not require; and
 - every stage gives me meaningful implementation direction and verification without becoming a generated-code tutorial.
 
-Requirements engineering, architecture decisions, technology selection, and roadmap planning are complete for DENK V1. The next phase is implementation, beginning with **Stage 1 — Repository & Development Foundation**, using the mentor-guided workflow described above.
+Requirements engineering, architecture decisions, technology selection, and roadmap planning are complete for DENK V1. Stage 1 is complete. The next sequence is **Pre-Stage-2 Hardening Transition → Stage 2 — First Vertical Slice**, using the mentor-guided workflow described above.

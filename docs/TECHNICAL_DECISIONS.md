@@ -30,6 +30,14 @@ This document records the technology and architecture decisions that are settled
 
 **Accepted trade-off:** Prisma abstracts some database behavior, but correctness-critical operations may still require careful transaction design, database constraints, and knowledge of PostgreSQL behavior.
 
+### Layered database verification
+
+**Decision:** Before Stage 2 product work, clean-runner CI must validate the Docker Compose configuration and Prisma configuration/schema, then generate Prisma Client. When Stage 2 introduces the first meaningful schema migration, CI must also start a fresh PostgreSQL database, apply all committed migrations non-interactively, verify migration state, and run database-backed integration tests. Do not create an empty Stage 1 migration.
+
+**Reason:** Static validation catches configuration and generation failures immediately. Fresh-database verification becomes meaningful only when DENK has an actual schema migration. Stage 1 established and locally verified the PostgreSQL and Prisma foundation; Stage 2 supplies the first schema required by product behavior.
+
+**Accepted trade-off:** Before the first Stage 2 migration, CI verifies database tooling but cannot yet prove migration reproducibility against a real schema. That proof is added with the first vertical slice rather than manufacturing migration history with no domain meaning.
+
 ### Validation
 
 **Decision:** Use Zod at untrusted input and configuration boundaries.
@@ -130,9 +138,19 @@ This document records the technology and architecture decisions that are settled
 | Static analysis        | ESLint                                    | Code-quality checks                                   |
 | Formatting             | Prettier                                  | Consistent source formatting                          |
 
+### Protected main workflow
+
+**Decision:** Before Stage 2 product implementation, protect `main` with a repository rule that requires pull requests and the existing `Verify` GitHub Actions check before merge, blocks force pushes and branch deletion, and applies to the repository owner. Require zero approving reviews while DENK has one developer.
+
+**Reason:** The established **branch → pull request → CI → merge** workflow should be enforced rather than advisory. This protects repository integrity and preserves a verified development history; it is not application authentication, authorization, or runtime security.
+
+**Accepted trade-off:** The developer cannot bypass a failing check or push directly to `main`, but no second person is required to approve routine solo work. CODEOWNERS, signed commits, merge queues, mandatory external review, and other unrelated governance controls are intentionally not required at this stage.
+
 ## Local Development
 
 Docker is not part of DENK's application architecture or production design. Docker Compose may optionally run PostgreSQL locally if it makes development setup more reproducible. The application must not depend on container-specific behavior.
+
+The Compose port mapping must bind PostgreSQL only to the development machine's loopback interface as `127.0.0.1:5432:5432`; DENK has no requirement for other machines to access this database. The simple `denk/denk` credentials are allowed only for isolated local development with non-sensitive, disposable state and must never be reused for staging or production.
 
 ## Intentionally Rejected for V1
 
