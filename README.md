@@ -10,9 +10,9 @@ DENK is being developed through an AI-assisted—not AI-delegated—workflow. Th
 
 ## Project Status
 
-Stage 1 — Repository & Development Foundation
+**Next phase:** Stage 2 — First Vertical Slice: Staff Opens a Bill, Guest Views It
 
-The application foundation, local PostgreSQL environment, Prisma tooling, automated tests, browser tests, and CI workflow are established. DENK domain functionality begins in Stage 2.
+Stage 1 and the Pre-Stage-2 Hardening Transition are complete. The application foundation, protected Git workflow, localhost-only PostgreSQL environment, Prisma tooling, automated tests, browser tests, and CI workflow are established. DENK domain functionality begins in Stage 2.
 
 ## Prerequisites
 
@@ -96,7 +96,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Database
 
-PostgreSQL runs locally through Docker Compose. Docker is development tooling only and is not part of DENK's application architecture.
+PostgreSQL runs locally through Docker Compose and binds only to `127.0.0.1:5432`. Docker is development tooling only and is not part of DENK's application architecture. The local `denk/denk` credentials are for non-sensitive, disposable development data only and must not be used for staging or production.
 
 Useful commands:
 
@@ -150,9 +150,9 @@ GitHub Actions runs on:
 - Pull requests targeting `main`
 - Pushes to `main`
 
-CI performs a clean dependency installation, formatting check, lint, route-type generation, TypeScript checking, Vitest tests, production build, and Playwright browser test.
+CI performs a clean dependency installation, Docker Compose validation, Prisma configuration/schema validation, Prisma Client generation, formatting check, lint, route-type generation, TypeScript checking, Vitest tests, production build, and Playwright browser test.
 
-A pull request should not be merged until its CI verification succeeds.
+The protected `main` branch requires changes through pull requests and requires the `Verify` CI check to succeed before merge. Zero approving reviews are required for the current solo-developer workflow; force pushes and deletion of `main` are blocked.
 
 ## Development Workflow
 

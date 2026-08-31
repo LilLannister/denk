@@ -61,13 +61,14 @@ A clean checkout can follow documented steps to install dependencies, start/conf
 
 ## Pre-Stage-2 Hardening Transition
 
-This is a small repository-hardening transition discovered during the Stage 1 review, not a reopening of Stage 1 or a separate product phase. Before normal Stage 2 product implementation:
+**Status: Complete.**
 
-1. Protect `main` so changes arrive through pull requests and the existing `Verify` GitHub Actions check must succeed before merge. Require zero approving reviews for the current solo-developer workflow, block force pushes and deletion of `main`, and apply the rule to the repository owner. Do not add CODEOWNERS, signed-commit requirements, merge queues, mandatory external review, or unrelated governance controls.
-2. Bind the local PostgreSQL port to `127.0.0.1:5432:5432`, because no DENK development requirement needs database access from another machine. The `denk/denk` credentials remain acceptable only for isolated local development with non-sensitive, disposable data; they must never become staging or production credentials.
-3. Extend clean-runner CI verification so `docker compose config`, Prisma configuration/schema validation, and Prisma Client generation succeed before Stage 2 product work begins.
+This small repository-hardening transition was completed after the Stage 1 review without reopening Stage 1 or becoming a separate product phase. Its completion record is:
 
-The transition is complete when these three changes are merged through the normal **branch → pull request → `Verify` CI → merge** workflow and the protected-branch rule is confirmed effective.
+- `main` is protected: changes require a pull request and the `Verify` GitHub Actions check, zero approving reviews are required for the solo-developer workflow, and force pushes and deletion are blocked with no owner bypass;
+- local PostgreSQL binds to `127.0.0.1:5432:5432`; the `denk/denk` credentials are limited to isolated local development with non-sensitive, disposable data and must never become staging or production credentials;
+- clean-runner CI validates the Docker Compose configuration and Prisma configuration/schema and generates Prisma Client; and
+- PR #6 passed the required `Verify` check, merged through the protected workflow, and was followed by a successful `main` CI run.
 
 When Stage 2 creates its first meaningful schema migration, CI will add the second database-verification level: start a fresh PostgreSQL database, apply all committed migrations non-interactively, verify migration state, and run database-backed integration tests. That migration belongs to the first vertical slice and must contain only schema required by that behavior.
 
@@ -481,4 +482,4 @@ Roadmap validation confirms:
 - no stage introduces infrastructure that DENK V1 does not require; and
 - every stage gives me meaningful implementation direction and verification without becoming a generated-code tutorial.
 
-Requirements engineering, architecture decisions, technology selection, and roadmap planning are complete for DENK V1. Stage 1 is complete. The next sequence is **Pre-Stage-2 Hardening Transition → Stage 2 — First Vertical Slice**, using the mentor-guided workflow described above.
+Requirements engineering, architecture decisions, technology selection, and roadmap planning are complete for DENK V1. The sequence **Stage 1 → Pre-Stage-2 Hardening Transition** is complete. The next active phase is **Stage 2 — First Vertical Slice: Staff Opens a Bill, Guest Views It**, using the mentor-guided workflow described above.
