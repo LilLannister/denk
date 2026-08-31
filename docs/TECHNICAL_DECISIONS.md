@@ -30,6 +30,14 @@ This document records the technology and architecture decisions that are settled
 
 **Accepted trade-off:** Prisma abstracts some database behavior, but correctness-critical operations may still require careful transaction design, database constraints, and knowledge of PostgreSQL behavior.
 
+### Exact money representation
+
+**Decision:** Represent DENK V1 money as integer minor units: Turkish lira input is converted to kuruş at the boundary, stored as PostgreSQL `INTEGER` through Prisma `Int`, and handled as safe-integer TypeScript `number` values such as `12550` for ₺125.50. Store item price as `unitPriceMinor`, keep quantity separate, and assume TRY for V1 without adding a currency column or multi-currency abstraction.
+
+**Reason:** Integer arithmetic avoids floating-point rounding errors and gives DENK one exact representation across validation, services, PostgreSQL, and tests. V1 has no multi-currency requirement.
+
+**Accepted trade-off:** Input and presentation boundaries must parse and format lira carefully, reject more than two fractional digits and unsafe or out-of-range values, and never convert stored values back into floating-point money for business calculations. Supporting another currency later will require an explicit schema and behavior change.
+
 ### Layered database verification
 
 **Decision:** Clean-runner CI validates the Docker Compose configuration and Prisma configuration/schema, then generates Prisma Client. When Stage 2 introduces the first meaningful schema migration, CI must also start a fresh PostgreSQL database, apply all committed migrations non-interactively, verify migration state, and run database-backed integration tests. Do not create an empty Stage 1 migration.
@@ -56,6 +64,14 @@ This document records the technology and architecture decisions that are settled
 
 **Accepted trade-off:** Authorization remains DENK code that must be designed, tested, and consistently applied; the authentication library does not solve it automatically.
 
+### Authentication identity and restaurant membership ownership
+
+**Decision:** Better Auth owns its core persistent identity and session data, including user, session, account, and verification records. DENK owns `Restaurant`, `RestaurantMembership`, restaurant-scoped `ADMIN`/`STAFF` roles, and resource authorization. `RestaurantMembership` references the Better Auth user identifier and is unique for a user/restaurant pair. Application services receive a minimal authenticated user identifier from the auth boundary and resolve DENK membership themselves.
+
+**Reason:** Authentication and restaurant authorization are different responsibilities. A DENK membership model permits restaurant-scoped roles and ownership checks without duplicating authenticated users or coupling domain services to Better Auth session internals.
+
+**Accepted trade-off:** DENK maintains a foreign-key relationship to Better Auth's user model and must keep generated auth schema compatible with the domain schema. The Better Auth organization plugin is intentionally not used in Stage 2 because its organizations, invitations, teams, active-organization state, and access-control system exceed the first slice's requirements.
+
 ### Anonymous guest identity
 
 **Decision:** Keep guests outside Better Auth. Create a short-lived, opaque, database-backed `GuestSession` scoped to the active table/bill session. Send its bearer credential in a Secure, HttpOnly cookie and store only a cryptographic hash of the token in PostgreSQL.
@@ -63,6 +79,14 @@ This document records the technology and architecture decisions that are settled
 **Reason:** Guests need no permanent account, but the server still needs a revocable identity with a narrow scope. An opaque credential avoids exposing database identifiers or trusting editable client state. Hashing limits the damage if stored session data is exposed.
 
 **Accepted trade-off:** DENK owns guest-session creation, expiry, revocation, cookie handling, token lookup, and cleanup instead of delegating them to Better Auth.
+
+### Join code and guest bearer credential
+
+**Decision:** Treat the temporary join code and guest bearer token as separate credentials. The join code is a human-usable, lower-entropy credential scoped to one current table session, normalized before validation, expired by the server, and used only during each guest-session join exchange; multiple guests may join while the code remains valid. Use at least eight unambiguous base32-style characters and store a keyed cryptographic digest rather than the raw code. Invalid table, code, and expiry cases return the same public result. The guest bearer token contains at least 256 random bits, is stored only as a cryptographic hash, and is delivered in a scoped Secure, HttpOnly cookie with explicit expiry.
+
+**Reason:** A join code grants only initial entry and is more guessable; a bearer token authenticates subsequent guest access and therefore requires substantially higher entropy. Separate handling prevents a convenient human code from becoming a long-lived session secret and limits information leakage during guessing.
+
+**Accepted trade-off:** Stage 2 uses entropy, short validity, session scoping, uniform errors, and observable failed attempts without adding Redis, CAPTCHA, or distributed rate-limiting infrastructure. Deployment-aware rate limiting must be reviewed before public launch if measured risk requires it.
 
 ## Shared Bill Updates and Correctness
 
