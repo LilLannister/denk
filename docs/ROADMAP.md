@@ -78,34 +78,52 @@ When Stage 2 creates its first meaningful schema migration, CI will add the seco
 
 Deliver the smallest meaningful end-to-end DENK capability: **Staff authenticates → opens a table session → enters bill items → anonymous guest joins → guest sees the bill**.
 
+### Conceptual Checkpoint Before Prisma
+
+Before writing the first domain models, settle and be able to explain:
+
+- Better Auth ownership of persistent identity/session data versus DENK ownership of restaurant membership, roles, and resource authorization;
+- the minimum entity relationships and their enforcement layers: validated server boundary, application service, database constraint, or authentication/session system;
+- a Stage 2 `TableSession` as the single current session supported for a table, without closing, reopening, history, or the complete lifecycle owned by Stage 3;
+- integer kuruş as the exact V1 money representation, with TRY assumed and conversion limited to input/presentation boundaries;
+- the lower-entropy, short-lived join code versus the high-entropy guest bearer credential; and
+- the explicit guest bill projection, excluding authentication records, credential material, other sessions, and unnecessary internal identifiers.
+
+This is a concise implementation gate, not another planning phase. Once these boundaries are recorded, implementation proceeds directly into the first schema.
+
 ### What I Will Implement
 
-1. Define only the minimum domain vocabulary and Prisma models required for a restaurant, staff user, table, active table/bill session, bill item, and guest session; create the first meaningful migration and add fresh-database migration verification to CI.
-2. Add Better Auth for restaurant-side sessions and seed or create the minimum Admin/Staff identity needed for development.
-3. Implement a thin authorization path that proves a staff user belongs to the restaurant whose table they operate.
-4. Build a staff view to open one table session and manually create the current bill with item name, quantity, and monetary unit price.
-5. Create a stable QR/table entry route and require the active bill's short temporary join code.
-6. On successful join, issue an opaque random guest credential, store only its hash, bind the `GuestSession` to the active table/bill session, and set the credential in a Secure, HttpOnly cookie.
-7. Build the guest bill view using server-side application services rather than querying Prisma from UI components.
-8. Show useful not-found, inactive-session, invalid-code, and expired-session states.
-9. Add a Playwright path covering the entire first slice.
+1. Configure Better Auth core authentication with its Prisma adapter and generate the required auth models. Better Auth owns persistent user/session/account/verification data; do not use its organization plugin for this slice.
+2. Define only the minimum DENK-owned Prisma models required for `Restaurant`, `RestaurantMembership`, `RestaurantTable`, the single current `TableSession` supported by Stage 2, `BillItem`, and `GuestSession`. Relate membership to Better Auth's user model without creating a duplicate staff identity.
+3. Review the complete auth/domain schema and enforcement-layer map, then create the first meaningful migration. Add CI verification that starts fresh PostgreSQL, applies committed migrations non-interactively, verifies migration state, and runs database-backed integration tests.
+4. Seed or create the minimum authenticated user, restaurant membership, and `ADMIN`/`STAFF` role needed for development.
+5. Implement a thin authorization path that receives authenticated user identity, resolves DENK membership, and proves the user may operate the restaurant-owned table.
+6. Build a staff view to open the table's one Stage 2 current session and manually create bill items with validated name, positive quantity, and integer `unitPriceMinor` in TRY.
+7. Create a stable, opaque QR/table entry route and require the current session's normalized, expiring join code without leaking whether the table, session, or code caused rejection.
+8. On successful join, issue a high-entropy guest bearer credential, store only its hash, bind `GuestSession` to exactly one table session, and set the credential in a scoped Secure, HttpOnly cookie with expiry.
+9. Build an explicit guest bill projection through server-side application services rather than querying Prisma from UI components.
+10. Show useful not-found, unavailable-session, invalid-join, and expired/revoked-session states without exposing internal distinctions to unauthorized guests.
+11. Add a Playwright path covering the entire first slice with separate staff and guest browser contexts.
 
 ### Engineering Concepts I Should Understand
 
 - vertical slices and evolving a schema from behavior;
 - authentication versus authorization;
+- Better Auth identity ownership versus DENK restaurant membership;
 - application/domain service boundaries;
-- integer minor units or another exact monetary representation—never floating-point arithmetic for money;
-- high-entropy bearer tokens, hashing, cookies, expiry, and resource scoping;
+- validation, contextual business rules, and database constraints as distinct enforcement layers;
+- integer minor units—never floating-point arithmetic for money;
+- lower-entropy join codes versus high-entropy bearer tokens, keyed hashing, cookies, expiry, and resource scoping;
 - why URL identifiers and client state are not authorization.
 
 ### Key Tests / Verification
 
 - An unauthenticated person cannot use staff operations.
 - Staff from another restaurant cannot open or edit the table session.
+- Concurrent or repeated open attempts cannot leave a table with an ambiguous Stage 2 current session; complete close/reopen/history behavior remains deferred to Stage 3.
 - An invalid table, inactive session, wrong join code, or invalid/expired guest cookie is rejected without leaking bill data.
 - The database contains a guest-token hash, never the raw bearer token.
-- Prices round-trip exactly in the chosen monetary representation.
+- Prices round-trip through PostgreSQL exactly as integer kuruş, and boundary tests reject malformed decimals, unsafe integers, invalid quantities, and out-of-range values.
 - On a clean CI PostgreSQL service, all committed migrations apply non-interactively, Prisma reports the expected migration state, and database-backed integration tests pass.
 - The Playwright test proves staff can open and populate a bill and a fresh anonymous browser can join and view it.
 
