@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -9,15 +8,16 @@ datasource db {
 }
 
 model User {
-  id            String    @id
-  name          String
-  email         String
-  emailVerified Boolean   @default(false)
-  image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  sessions      Session[]
-  accounts      Account[]
+  id                    String                 @id
+  name                  String
+  email                 String
+  emailVerified         Boolean                @default(false)
+  image                 String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  sessions              Session[]
+  accounts              Account[]
+  restaurantMemberships RestaurantMembership[]
 
   @@unique([email])
   @@map("user")
@@ -71,4 +71,91 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+enum RestaurantRole {
+  ADMIN
+  STAFF
+}
+
+model Restaurant {
+  id          String                 @id @default(cuid())
+  name        String
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  memberships RestaurantMembership[]
+  tables      RestaurantTable[]
+
+  @@map("restaurant")
+}
+
+model RestaurantMembership {
+  id           String         @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         RestaurantRole
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([restaurantId, userId])
+  @@index([userId])
+  @@map("restaurant_membership")
+}
+
+model RestaurantTable {
+  id             String        @id @default(cuid())
+  publicId       String        @unique @default(cuid())
+  name           String
+  restaurantId   String
+  restaurant     Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  currentSession TableSession?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([restaurantId, name])
+  @@map("restaurant_table")
+}
+
+model TableSession {
+  id                String          @id @default(cuid())
+  restaurantTableId String          @unique
+  restaurantTable   RestaurantTable @relation(fields: [restaurantTableId], references: [id], onDelete: Cascade)
+  joinCodeDigest    String
+  joinCodeExpiresAt DateTime
+  billItems         BillItem[]
+  guestSessions     GuestSession[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@map("table_session")
+}
+
+model BillItem {
+  id             String       @id @default(cuid())
+  tableSessionId String
+  tableSession   TableSession @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
+  name           String
+  quantity       Int
+  unitPriceMinor Int
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([tableSessionId])
+  @@map("bill_item")
+}
+
+model GuestSession {
+  id             String       @id @default(cuid())
+  tableSessionId String
+  tableSession   TableSession @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
+  tokenHash      String       @unique
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([tableSessionId])
+  @@map("guest_session")
 }
