@@ -1,8 +1,161 @@
 generator client {
-    provider = "prisma-client"
-    output = "../src/generated/prisma"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
-    provider = "postgresql"
+  provider = "postgresql"
+}
+
+model User {
+  id                    String                 @id
+  name                  String
+  email                 String
+  emailVerified         Boolean                @default(false)
+  image                 String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  sessions              Session[]
+  accounts              Account[]
+  restaurantMemberships RestaurantMembership[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  issuer                String
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([issuer, accountId], map: "account_issuer_accountId_uidx")
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+enum RestaurantRole {
+  ADMIN
+  STAFF
+}
+
+model Restaurant {
+  id          String                 @id @default(cuid())
+  name        String
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  memberships RestaurantMembership[]
+  tables      RestaurantTable[]
+
+  @@map("restaurant")
+}
+
+model RestaurantMembership {
+  id           String         @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         RestaurantRole
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([restaurantId, userId])
+  @@index([userId])
+  @@map("restaurant_membership")
+}
+
+model RestaurantTable {
+  id             String        @id @default(cuid())
+  publicId       String        @unique @default(cuid())
+  name           String
+  restaurantId   String
+  restaurant     Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  currentSession TableSession?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([restaurantId, name])
+  @@map("restaurant_table")
+}
+
+model TableSession {
+  id                String          @id @default(cuid())
+  restaurantTableId String          @unique
+  restaurantTable   RestaurantTable @relation(fields: [restaurantTableId], references: [id], onDelete: Cascade)
+  joinCodeDigest    String
+  joinCodeExpiresAt DateTime
+  billItems         BillItem[]
+  guestSessions     GuestSession[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@map("table_session")
+}
+
+model BillItem {
+  id             String       @id @default(cuid())
+  tableSessionId String
+  tableSession   TableSession @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
+  name           String
+  quantity       Int
+  unitPriceMinor Int
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([tableSessionId])
+  @@map("bill_item")
+}
+
+model GuestSession {
+  id             String       @id @default(cuid())
+  tableSessionId String
+  tableSession   TableSession @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
+  tokenHash      String       @unique
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([tableSessionId])
+  @@map("guest_session")
 }
