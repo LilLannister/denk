@@ -22,6 +22,21 @@ jobs:
       BETTER_AUTH_SECRET: "ci-only-secret-with-at-least-32-characters"
       BETTER_AUTH_URL: "http://localhost:3000"
 
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: denk
+          POSTGRES_USER: denk
+          POSTGRES_PASSWORD: denk
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U denk -d denk"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -46,6 +61,12 @@ jobs:
 
       - name: Generate Prisma Client
         run: pnpm db:generate
+
+      - name: Apply migrations to fresh PostgreSQL
+        run: pnpm db:migrate:deploy
+
+      - name: Verify migration state
+        run: pnpm db:migrate:status
 
       - name: Check formatting
         run: pnpm format:check
