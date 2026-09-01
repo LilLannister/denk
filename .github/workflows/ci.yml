@@ -17,6 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    env:
+      DATABASE_URL: "postgresql://denk:denk@127.0.0.1:5432/denk?schema=public"
+      BETTER_AUTH_SECRET: "ci-only-secret-with-at-least-32-characters"
+      BETTER_AUTH_URL: "http://localhost:3000"
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -38,13 +43,9 @@ jobs:
 
       - name: Validate Prisma configuration and schema
         run: pnpm db:validate
-        env:
-          DATABASE_URL: postgresql://denk:denk@127.0.0.1:5432/denk?schema=public
 
       - name: Generate Prisma Client
         run: pnpm db:generate
-        env:
-          DATABASE_URL: postgresql://denk:denk@127.0.0.1:5432/denk?schema=public
 
       - name: Check formatting
         run: pnpm format:check
