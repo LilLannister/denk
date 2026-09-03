@@ -20,15 +20,17 @@ export function JoinTableForm({ publicTableId }: { publicTableId: string }) {
       <input name="publicTableId" type="hidden" value={publicTableId} />
 
       <label className="block">
-        <span className="text-sm font-medium">Six-digit join code</span>
+        <span className="text-sm font-medium">Eight-character join code</span>
         <input
-          className="mt-1 w-full rounded border px-3 py-2 font-mono text-xl tracking-widest"
+          className="mt-1 w-full rounded border px-3 py-2 font-mono text-xl tracking-widest uppercase"
           name="joinCode"
           type="text"
-          inputMode="numeric"
+          inputMode="text"
           autoComplete="one-time-code"
-          pattern="[0-9]{6}"
-          maxLength={6}
+          autoCapitalize="characters"
+          pattern="[0-9A-Za-z]{8}"
+          maxLength={8}
+          spellCheck={false}
           required
         />
       </label>

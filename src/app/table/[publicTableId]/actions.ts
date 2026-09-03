@@ -7,6 +7,8 @@ import { z } from "zod";
 import { GuestJoinDeniedError, joinTableSession } from "@/lib/guest-session";
 import { GUEST_SESSION_COOKIE_NAME } from "@/lib/guest-session-cookie";
 
+import { isJoinCode, normalizeJoinCode } from "@/lib/join-code";
+
 export type JoinTableState = {
   status: "idle" | "error";
   message?: string;
@@ -19,7 +21,7 @@ export async function joinTableAction(
   const input = z
     .object({
       publicTableId: z.string().min(1),
-      joinCode: z.string().regex(/^\d{6}$/),
+      joinCode: z.string().transform(normalizeJoinCode).refine(isJoinCode),
     })
     .safeParse({
       publicTableId: formData.get("publicTableId"),

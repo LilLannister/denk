@@ -113,7 +113,7 @@ describe("opening a table session", () => {
       now,
     });
 
-    expect(result.joinCode).toMatch(/^\d{6}$/);
+    expect(result.joinCode).toMatch(/^[0-9A-HJKMNP-TV-Z]{8}$/);
     expect(result.tableSession.restaurantTableId).toBe(restaurantTableId);
     expect(result.tableSession.joinCodeDigest).not.toBe(result.joinCode);
     expect(result.tableSession.joinCodeExpiresAt).toEqual(
