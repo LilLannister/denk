@@ -8,7 +8,9 @@ import { RestaurantAccessDeniedError } from "./staff-authorization";
 import {
   RestaurantTableNotFoundError,
   TableSessionAlreadyOpenError,
+  TableSessionNotOpenError,
   openTableSession,
+  rotateTableSessionJoinCode,
 } from "./table-session";
 
 let userId: string;
@@ -196,4 +198,78 @@ describe("opening a table session", () => {
       );
     }
   });
+});
+
+it("rotates the join code without replacing the table session", async () => {
+  const opened = await openTableSession({
+    userId,
+    restaurantTableId,
+    now: new Date("2026-09-03T12:00:00.000Z"),
+  });
+
+  const guestSession = await prisma.guestSession.create({
+    data: {
+      tableSessionId: opened.tableSession.id,
+      tokenHash: `rotation-test-${randomUUID()}`,
+      expiresAt: new Date("2026-09-04T00:00:00.000Z"),
+    },
+  });
+
+  const rotated = await rotateTableSessionJoinCode({
+    userId,
+    restaurantTableId,
+    now: new Date("2026-09-03T12:05:00.000Z"),
+  });
+
+  expect(rotated.tableSession.id).toBe(opened.tableSession.id);
+  expect(rotated.tableSession.joinCodeExpiresAt).toEqual(
+    new Date("2026-09-03T12:20:00.000Z"),
+  );
+
+  expect(
+    verifyJoinCode(
+      opened.joinCode,
+      rotated.tableSession.joinCodeDigest,
+      process.env.BETTER_AUTH_SECRET!,
+    ),
+  ).toBe(false);
+
+  expect(
+    verifyJoinCode(
+      rotated.joinCode,
+      rotated.tableSession.joinCodeDigest,
+      process.env.BETTER_AUTH_SECRET!,
+    ),
+  ).toBe(true);
+
+  expect(
+    await prisma.guestSession.findUnique({
+      where: {
+        id: guestSession.id,
+      },
+    }),
+  ).not.toBeNull();
+});
+
+it("rejects rotation by staff from another restaurant", async () => {
+  await openTableSession({
+    userId,
+    restaurantTableId,
+  });
+
+  await expect(
+    rotateTableSessionJoinCode({
+      userId: otherUserId,
+      restaurantTableId,
+    }),
+  ).rejects.toBeInstanceOf(RestaurantAccessDeniedError);
+});
+
+it("rejects rotation when no table session is open", async () => {
+  await expect(
+    rotateTableSessionJoinCode({
+      userId,
+      restaurantTableId,
+    }),
+  ).rejects.toBeInstanceOf(TableSessionNotOpenError);
 });

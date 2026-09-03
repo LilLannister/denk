@@ -11,6 +11,8 @@ import {
   RestaurantTableNotFoundError,
   TableSessionAlreadyOpenError,
   openTableSession,
+  TableSessionNotOpenError,
+  rotateTableSessionJoinCode,
 } from "@/lib/table-session";
 
 export type OpenTableSessionState = {
@@ -79,6 +81,70 @@ export async function openTableSessionAction(
     return {
       status: "error",
       message: "The table session could not be opened.",
+    };
+  }
+}
+
+export async function rotateTableSessionJoinCodeAction(
+  _previousState: OpenTableSessionState,
+  formData: FormData,
+): Promise<OpenTableSessionState> {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!session) {
+    redirect("/staff/sign-in");
+  }
+
+  const parsedTableId = z
+    .string()
+    .min(1)
+    .safeParse(formData.get("restaurantTableId"));
+
+  if (!parsedTableId.success) {
+    return {
+      status: "error",
+      message: "Invalid table.",
+    };
+  }
+
+  try {
+    const result = await rotateTableSessionJoinCode({
+      userId: session.user.id,
+      restaurantTableId: parsedTableId.data,
+    });
+
+    revalidatePath("/staff");
+
+    return {
+      status: "success",
+      message: "New join code generated.",
+      joinCode: result.joinCode,
+    };
+  } catch (error) {
+    if (error instanceof TableSessionNotOpenError) {
+      return {
+        status: "error",
+        message: "This table does not have an open session.",
+      };
+    }
+
+    if (
+      error instanceof RestaurantAccessDeniedError ||
+      error instanceof RestaurantTableNotFoundError
+    ) {
+      return {
+        status: "error",
+        message: "You cannot update this table.",
+      };
+    }
+
+    console.error("Failed to rotate table join code", error);
+
+    return {
+      status: "error",
+      message: "A new join code could not be generated.",
     };
   }
 }
