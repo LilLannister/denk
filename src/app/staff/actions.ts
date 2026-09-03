@@ -15,6 +15,14 @@ import {
   rotateTableSessionJoinCode,
 } from "@/lib/table-session";
 
+import {
+  BillItemTableNotFoundError,
+  BillItemTableSessionNotOpenError,
+  InvalidBillItemError,
+  addBillItem,
+} from "@/lib/bill-item";
+import { InvalidMoneyAmountError, parseAmountToMinorUnits } from "@/lib/money";
+
 export type OpenTableSessionState = {
   status: "idle" | "success" | "error";
   message?: string;
@@ -145,6 +153,96 @@ export async function rotateTableSessionJoinCodeAction(
     return {
       status: "error",
       message: "A new join code could not be generated.",
+    };
+  }
+}
+
+export type AddBillItemState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+};
+
+const addBillItemFormSchema = z.object({
+  restaurantTableId: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
+  quantity: z.coerce.number().int().positive(),
+  unitPrice: z.string().min(1),
+});
+
+export async function addBillItemAction(
+  _previousState: AddBillItemState,
+  formData: FormData,
+): Promise<AddBillItemState> {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!session) {
+    redirect("/staff/sign-in");
+  }
+
+  const parsedForm = addBillItemFormSchema.safeParse({
+    restaurantTableId: formData.get("restaurantTableId"),
+    name: formData.get("name"),
+    quantity: formData.get("quantity"),
+    unitPrice: formData.get("unitPrice"),
+  });
+
+  if (!parsedForm.success) {
+    return {
+      status: "error",
+      message: "Enter a valid name, quantity, and unit price.",
+    };
+  }
+
+  try {
+    await addBillItem({
+      userId: session.user.id,
+      restaurantTableId: parsedForm.data.restaurantTableId,
+      name: parsedForm.data.name,
+      quantity: parsedForm.data.quantity,
+      unitPriceMinor: parseAmountToMinorUnits(parsedForm.data.unitPrice),
+    });
+
+    revalidatePath("/staff");
+
+    return {
+      status: "success",
+      message: "Bill item added.",
+    };
+  } catch (error) {
+    if (
+      error instanceof InvalidBillItemError ||
+      error instanceof InvalidMoneyAmountError
+    ) {
+      return {
+        status: "error",
+        message: "Enter a valid name, quantity, and unit price.",
+      };
+    }
+
+    if (error instanceof BillItemTableSessionNotOpenError) {
+      return {
+        status: "error",
+        message: "Open a table session before adding bill items.",
+      };
+    }
+
+    if (
+      error instanceof RestaurantAccessDeniedError ||
+      error instanceof BillItemTableNotFoundError
+    ) {
+      return {
+        status: "error",
+        message: "You cannot add items to this table.",
+      };
+    }
+
+    console.error("Failed to add bill item", error);
+
+    return {
+      status: "error",
+      message: "The bill item could not be added.",
     };
   }
 }
