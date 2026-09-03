@@ -1,3 +1,5 @@
+export const MAXIMUM_MINOR_UNIT_AMOUNT = 2_147_483_647;
+
 const decimalAmountPattern = /^(0|[1-9]\d*)(?:\.(\d{1,2}))?$/;
 
 export class InvalidMoneyAmountError extends Error {
@@ -18,7 +20,10 @@ export function parseAmountToMinorUnits(value: string): number {
   const fractionalUnits = BigInt((match[2] ?? "").padEnd(2, "0") || "0");
   const minorUnits = majorUnits * BigInt(100) + fractionalUnits;
 
-  if (minorUnits <= BigInt(0) || minorUnits > BigInt(Number.MAX_SAFE_INTEGER)) {
+  if (
+    minorUnits <= BigInt(0) ||
+    minorUnits > BigInt(MAXIMUM_MINOR_UNIT_AMOUNT)
+  ) {
     throw new InvalidMoneyAmountError();
   }
 
@@ -34,4 +39,8 @@ export function formatMinorUnits(value: number): string {
   const fractionalUnits = String(value % 100).padStart(2, "0");
 
   return `${majorUnits}.${fractionalUnits}`;
+}
+
+export function formatTryAmount(value: number): string {
+  return `₺${formatMinorUnits(value)}`;
 }

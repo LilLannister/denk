@@ -61,7 +61,7 @@ export async function joinTableAction(
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
-    path: "/",
+    path: `/table/${encodeURIComponent(input.data.publicTableId)}`,
     expires: joined.guestSession.expiresAt,
   });
 

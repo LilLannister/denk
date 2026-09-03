@@ -2,14 +2,12 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
+import { formatTryAmount } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 
-import { SignOutButton } from "./sign-out-button";
-import { OpenTableSessionForm } from "./open-table-session-form";
-
-import { formatMinorUnits } from "@/lib/money";
-
 import { AddBillItemForm } from "./add-bill-item-form";
+import { OpenTableSessionForm } from "./open-table-session-form";
+import { SignOutButton } from "./sign-out-button";
 
 export default async function StaffPage() {
   const session = await auth.api.getSession({
@@ -110,7 +108,7 @@ export default async function StaffPage() {
                           {table.currentSession.billItems.map((item) => (
                             <li className="text-sm" key={item.id}>
                               {item.quantity} × {item.name} at{" "}
-                              {formatMinorUnits(item.unitPriceMinor)}
+                              {formatTryAmount(item.unitPriceMinor)}
                             </li>
                           ))}
                         </ul>
@@ -118,7 +116,7 @@ export default async function StaffPage() {
 
                       <p className="mt-3 font-medium">
                         Total:{" "}
-                        {formatMinorUnits(
+                        {formatTryAmount(
                           table.currentSession.billItems.reduce(
                             (total, item) =>
                               total + item.quantity * item.unitPriceMinor,

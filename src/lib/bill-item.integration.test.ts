@@ -164,6 +164,11 @@ describe("adding bill items", () => {
     { name: "Invalid quantity", quantity: 0, unitPriceMinor: 100 },
     { name: "Invalid price", quantity: 1, unitPriceMinor: 0 },
     { name: "Fractional quantity", quantity: 1.5, unitPriceMinor: 100 },
+    {
+      name: "Unsafe line total",
+      quantity: 2_147_483_647,
+      unitPriceMinor: 2_147_483_647,
+    },
   ])("rejects invalid item details", async (input) => {
     await expect(
       addBillItem({

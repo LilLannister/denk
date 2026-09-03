@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 
 import { stage2Fixture } from "./stage-2-fixture";
 
+import { GUEST_SESSION_COOKIE_NAME } from "../../src/lib/guest-session-cookie";
+
 test("staff opens and populates a bill that an anonymous guest joins and views", async ({
   browser,
 }) => {
@@ -11,7 +13,8 @@ test("staff opens and populates a bill that an anonymous guest joins and views",
   try {
     const staffPage = await staffContext.newPage();
 
-    await staffPage.goto("/staff/sign-in");
+    await staffPage.goto("/staff");
+    await expect(staffPage).toHaveURL(/\/staff\/sign-in$/);
     await staffPage.getByLabel("Email").fill(stage2Fixture.staffEmail);
     await staffPage.getByLabel("Password").fill(stage2Fixture.staffPassword);
     await staffPage.getByRole("button", { name: "Sign in" }).click();
@@ -51,14 +54,14 @@ test("staff opens and populates a bill that an anonymous guest joins and views",
       .getByLabel("Item name")
       .fill("E2E Shared Breakfast");
     await restaurantSection.getByLabel("Quantity").fill("2");
-    await restaurantSection.getByLabel("Unit price").fill("125.50");
+    await restaurantSection.getByLabel("Unit price (TRY)").fill("125.50");
     await restaurantSection.getByRole("button", { name: "Add item" }).click();
 
     await expect(restaurantSection.getByText("Bill item added.")).toBeVisible();
     await expect(
-      restaurantSection.getByText("2 × E2E Shared Breakfast at 125.50"),
+      restaurantSection.getByText("2 × E2E Shared Breakfast at ₺125.50"),
     ).toBeVisible();
-    await expect(restaurantSection.getByText("Total: 251.00")).toBeVisible();
+    await expect(restaurantSection.getByText("Total: ₺251.00")).toBeVisible();
 
     const guestPage = await guestContext.newPage();
 
@@ -74,7 +77,24 @@ test("staff opens and populates a bill that an anonymous guest joins and views",
       }),
     ).toBeVisible();
     await expect(guestPage.getByText("2 × E2E Shared Breakfast")).toBeVisible();
-    await expect(guestPage.getByText("Total: 251.00")).toBeVisible();
+    await expect(guestPage.getByText("Total: ₺251.00")).toBeVisible();
+
+    const guestCookies = await guestContext.cookies();
+    const guestSessionCookie = guestCookies.find(
+      (cookie) => cookie.name === GUEST_SESSION_COOKIE_NAME,
+    );
+
+    expect(guestSessionCookie).toMatchObject({
+      httpOnly: true,
+      sameSite: "Lax",
+      path: guestTablePath!,
+    });
+
+    const staffCookies = await staffContext.cookies();
+
+    expect(
+      staffCookies.some((cookie) => cookie.name === GUEST_SESSION_COOKIE_NAME),
+    ).toBe(false);
   } finally {
     await staffContext.close();
     await guestContext.close();

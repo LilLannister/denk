@@ -73,7 +73,7 @@ export function AddBillItemForm({
           className="block text-sm"
           htmlFor={`item-price-${restaurantTableId}`}
         >
-          Unit price
+          Unit price (TRY)
         </label>
         <input
           className="mt-1 w-full rounded border px-3 py-2"

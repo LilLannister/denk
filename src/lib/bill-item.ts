@@ -5,13 +5,17 @@ import { requireRestaurantMembership } from "./staff-authorization";
 
 const maximumDatabaseInteger = 2_147_483_647;
 
-const addBillItemSchema = z.object({
-  userId: z.string().min(1),
-  restaurantTableId: z.string().min(1),
-  name: z.string().trim().min(1).max(120),
-  quantity: z.number().int().positive().max(maximumDatabaseInteger),
-  unitPriceMinor: z.number().int().positive().max(maximumDatabaseInteger),
-});
+const addBillItemSchema = z
+  .object({
+    userId: z.string().min(1),
+    restaurantTableId: z.string().min(1),
+    name: z.string().trim().min(1).max(120),
+    quantity: z.number().int().positive().max(maximumDatabaseInteger),
+    unitPriceMinor: z.number().int().positive().max(maximumDatabaseInteger),
+  })
+  .refine(({ quantity, unitPriceMinor }) =>
+    Number.isSafeInteger(quantity * unitPriceMinor),
+  );
 
 export class InvalidBillItemError extends Error {
   constructor() {
