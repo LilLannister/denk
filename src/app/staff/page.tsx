@@ -7,6 +7,10 @@ import { prisma } from "@/lib/prisma";
 import { SignOutButton } from "./sign-out-button";
 import { OpenTableSessionForm } from "./open-table-session-form";
 
+import { formatMinorUnits } from "@/lib/money";
+
+import { AddBillItemForm } from "./add-bill-item-form";
+
 export default async function StaffPage() {
   const session = await auth.api.getSession({
     headers: await headers(),
@@ -25,7 +29,15 @@ export default async function StaffPage() {
         include: {
           tables: {
             include: {
-              currentSession: true,
+              currentSession: {
+                include: {
+                  billItems: {
+                    orderBy: {
+                      createdAt: "asc",
+                    },
+                  },
+                },
+              },
             },
             orderBy: {
               name: "asc",
@@ -78,6 +90,39 @@ export default async function StaffPage() {
                     restaurantTableId={table.id}
                     hasOpenSession={Boolean(table.currentSession)}
                   />
+                  {table.currentSession ? (
+                    <div className="mt-4">
+                      <h4 className="font-medium">Current bill</h4>
+
+                      {table.currentSession.billItems.length === 0 ? (
+                        <p className="mt-2 text-sm text-gray-600">
+                          No bill items yet.
+                        </p>
+                      ) : (
+                        <ul className="mt-2 space-y-1">
+                          {table.currentSession.billItems.map((item) => (
+                            <li className="text-sm" key={item.id}>
+                              {item.quantity} × {item.name} at{" "}
+                              {formatMinorUnits(item.unitPriceMinor)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      <p className="mt-3 font-medium">
+                        Total:{" "}
+                        {formatMinorUnits(
+                          table.currentSession.billItems.reduce(
+                            (total, item) =>
+                              total + item.quantity * item.unitPriceMinor,
+                            0,
+                          ),
+                        )}
+                      </p>
+
+                      <AddBillItemForm restaurantTableId={table.id} />
+                    </div>
+                  ) : null}
                 </li>
               ))}
             </ul>

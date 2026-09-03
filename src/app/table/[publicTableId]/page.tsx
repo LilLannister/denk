@@ -4,6 +4,7 @@ import { getGuestTableAccess } from "@/lib/guest-session";
 import { GUEST_SESSION_COOKIE_NAME } from "@/lib/guest-session-cookie";
 
 import { JoinTableForm } from "./join-table-form";
+import { formatMinorUnits } from "@/lib/money";
 
 export default async function GuestTablePage({
   params,
@@ -54,18 +55,20 @@ export default async function GuestTablePage({
       ) : (
         <ul className="mt-8 divide-y">
           {billItems.map((item) => (
-            <li className="flex justify-between py-3" key={item.id}>
+            <li className="flex justify-between gap-4 py-3" key={item.id}>
               <span>
                 {item.quantity} × {item.name}
               </span>
-              <span>{item.quantity * item.unitPriceMinor} minor units</span>
+              <span className="shrink-0 text-right">
+                {formatMinorUnits(item.quantity * item.unitPriceMinor)}
+              </span>
             </li>
           ))}
         </ul>
       )}
 
       <p className="mt-6 text-right font-semibold">
-        Total: {totalMinor} minor units
+        Total: {formatMinorUnits(totalMinor)}
       </p>
     </main>
   );
