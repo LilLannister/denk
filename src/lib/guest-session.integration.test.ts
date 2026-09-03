@@ -12,8 +12,8 @@ import {
   joinTableSession,
 } from "./guest-session";
 
-const joinCode = "123456";
-const otherJoinCode = "654321";
+const joinCode = "ABCD2345";
+const otherJoinCode = "WXYZ6789";
 const secret = process.env.BETTER_AUTH_SECRET!;
 
 let restaurantId: string;
@@ -105,7 +105,7 @@ describe("guest table-session joining", () => {
     await expect(
       joinTableSession({
         publicTableId,
-        joinCode: "000000",
+        joinCode: "00000000",
         now: new Date("2026-09-03T12:00:00.000Z"),
       }),
     ).rejects.toBeInstanceOf(GuestJoinDeniedError);

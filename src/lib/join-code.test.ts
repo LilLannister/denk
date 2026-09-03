@@ -1,31 +1,46 @@
 import { describe, expect, it } from "vitest";
 
-import { digestJoinCode, generateJoinCode, verifyJoinCode } from "./join-code";
+import {
+  digestJoinCode,
+  generateJoinCode,
+  normalizeJoinCode,
+  verifyJoinCode,
+} from "./join-code";
 
 const secret = "test-secret-with-at-least-32-characters";
 
 describe("join codes", () => {
-  it("generates six-digit codes", () => {
+  it("generates eight-character unambiguous codes", () => {
     for (let index = 0; index < 100; index += 1) {
-      expect(generateJoinCode()).toMatch(/^\d{6}$/);
+      expect(generateJoinCode()).toMatch(/^[0-9A-HJKMNP-TV-Z]{8}$/);
     }
   });
 
+  it("normalizes surrounding whitespace and letter case", () => {
+    expect(normalizeJoinCode("  abcd2345  ")).toBe("ABCD2345");
+  });
+
   it("does not store the readable code as its digest", () => {
-    expect(digestJoinCode("123456", secret)).not.toBe("123456");
+    expect(digestJoinCode("ABCD2345", secret)).not.toBe("ABCD2345");
   });
 
   it("verifies the correct code", () => {
-    const digest = digestJoinCode("123456", secret);
+    const digest = digestJoinCode("ABCD2345", secret);
 
-    expect(verifyJoinCode("123456", digest, secret)).toBe(true);
+    expect(verifyJoinCode("ABCD2345", digest, secret)).toBe(true);
   });
 
-  it("rejects an incorrect or malformed code", () => {
-    const digest = digestJoinCode("123456", secret);
+  it("verifies a normalized version of the correct code", () => {
+    const digest = digestJoinCode("ABCD2345", secret);
 
-    expect(verifyJoinCode("654321", digest, secret)).toBe(false);
-    expect(verifyJoinCode("12345", digest, secret)).toBe(false);
-    expect(verifyJoinCode("abcdef", digest, secret)).toBe(false);
+    expect(verifyJoinCode("  abcd2345  ", digest, secret)).toBe(true);
+  });
+
+  it("rejects incorrect, ambiguous, or malformed codes", () => {
+    const digest = digestJoinCode("ABCD2345", secret);
+
+    expect(verifyJoinCode("ZZZZZZZZ", digest, secret)).toBe(false);
+    expect(verifyJoinCode("ABCDO345", digest, secret)).toBe(false);
+    expect(verifyJoinCode("123456", digest, secret)).toBe(false);
   });
 });
