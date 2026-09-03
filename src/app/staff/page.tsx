@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 import { SignOutButton } from "./sign-out-button";
+import { OpenTableSessionForm } from "./open-table-session-form";
 
 export default async function StaffPage() {
   const session = await auth.api.getSession({
@@ -23,6 +24,9 @@ export default async function StaffPage() {
       restaurant: {
         include: {
           tables: {
+            include: {
+              currentSession: true,
+            },
             orderBy: {
               name: "asc",
             },
@@ -68,7 +72,13 @@ export default async function StaffPage() {
             <h3 className="mt-5 font-medium">Tables</h3>
             <ul className="mt-2 list-inside list-disc">
               {membership.restaurant.tables.map((table) => (
-                <li key={table.id}>{table.name}</li>
+                <li className="py-2" key={table.id}>
+                  <span>{table.name}</span>
+                  <OpenTableSessionForm
+                    restaurantTableId={table.id}
+                    hasOpenSession={Boolean(table.currentSession)}
+                  />
+                </li>
               ))}
             </ul>
           </section>
