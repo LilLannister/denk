@@ -8,7 +8,7 @@ import { prisma } from "./prisma";
 
 import {
   GuestJoinDeniedError,
-  getGuestTableAccess,
+  getGuestBillProjection,
   joinTableSession,
 } from "./guest-session";
 
@@ -101,6 +101,60 @@ describe("guest table-session joining", () => {
     );
   });
 
+  it("returns only the explicit bill projection with exact totals", async () => {
+    const now = new Date("2026-09-03T12:00:00.000Z");
+
+    const joined = await joinTableSession({
+      publicTableId,
+      joinCode,
+      now,
+    });
+
+    await prisma.billItem.createMany({
+      data: [
+        {
+          tableSessionId,
+          name: "Shared breakfast",
+          quantity: 2,
+          unitPriceMinor: 12_550,
+          createdAt: new Date("2026-09-03T12:01:00.000Z"),
+        },
+        {
+          tableSessionId,
+          name: "Tea",
+          quantity: 1,
+          unitPriceMinor: 500,
+          createdAt: new Date("2026-09-03T12:02:00.000Z"),
+        },
+      ],
+    });
+
+    const bill = await getGuestBillProjection({
+      publicTableId,
+      token: joined.token,
+      now,
+    });
+
+    expect(bill).toEqual({
+      tableName: expect.stringMatching(/^Guest Table /),
+      items: [
+        {
+          name: "Shared breakfast",
+          quantity: 2,
+          unitPriceMinor: 12_550,
+          lineTotalMinor: 25_100,
+        },
+        {
+          name: "Tea",
+          quantity: 1,
+          unitPriceMinor: 500,
+          lineTotalMinor: 500,
+        },
+      ],
+      totalMinor: 25_600,
+    });
+  });
+
   it("rejects an incorrect join code", async () => {
     await expect(
       joinTableSession({
@@ -150,18 +204,21 @@ describe("guest table-session joining", () => {
       now,
     });
 
-    const access = await getGuestTableAccess({
+    const access = await getGuestBillProjection({
       publicTableId,
       token: joined.token,
       now,
     });
 
-    expect(access?.id).toBe(joined.guestSession.id);
-    expect(access?.tableSession.restaurantTable.publicId).toBe(publicTableId);
+    expect(access).toEqual({
+      tableName: expect.stringMatching(/^Guest Table /),
+      items: [],
+      totalMinor: 0,
+    });
   });
 
   it("rejects an incorrect guest token", async () => {
-    const access = await getGuestTableAccess({
+    const access = await getGuestBillProjection({
       publicTableId,
       token: "incorrect-guest-token",
       now: new Date("2026-09-03T12:00:00.000Z"),
@@ -179,7 +236,7 @@ describe("guest table-session joining", () => {
       now,
     });
 
-    const access = await getGuestTableAccess({
+    const access = await getGuestBillProjection({
       publicTableId: otherPublicTableId,
       token: joined.token,
       now,
@@ -195,7 +252,7 @@ describe("guest table-session joining", () => {
       now: new Date("2026-09-03T12:00:00.000Z"),
     });
 
-    const access = await getGuestTableAccess({
+    const access = await getGuestBillProjection({
       publicTableId,
       token: joined.token,
       now: new Date("2026-09-04T00:00:00.000Z"),
@@ -222,7 +279,7 @@ describe("guest table-session joining", () => {
       },
     });
 
-    const access = await getGuestTableAccess({
+    const access = await getGuestBillProjection({
       publicTableId,
       token: joined.token,
       now,

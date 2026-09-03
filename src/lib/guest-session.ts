@@ -67,7 +67,7 @@ export async function joinTableSession({
   };
 }
 
-export async function getGuestTableAccess({
+export async function getGuestBillProjection({
   publicTableId,
   token,
   now = new Date(),
@@ -80,11 +80,23 @@ export async function getGuestTableAccess({
     where: {
       tokenHash: hashGuestToken(token),
     },
-    include: {
+    select: {
+      revokedAt: true,
+      expiresAt: true,
       tableSession: {
-        include: {
-          restaurantTable: true,
+        select: {
+          restaurantTable: {
+            select: {
+              publicId: true,
+              name: true,
+            },
+          },
           billItems: {
+            select: {
+              name: true,
+              quantity: true,
+              unitPriceMinor: true,
+            },
             orderBy: {
               createdAt: "asc",
             },
@@ -103,5 +115,16 @@ export async function getGuestTableAccess({
     return null;
   }
 
-  return guestSession;
+  const items = guestSession.tableSession.billItems.map((item) => ({
+    name: item.name,
+    quantity: item.quantity,
+    unitPriceMinor: item.unitPriceMinor,
+    lineTotalMinor: item.quantity * item.unitPriceMinor,
+  }));
+
+  return {
+    tableName: guestSession.tableSession.restaurantTable.name,
+    items,
+    totalMinor: items.reduce((total, item) => total + item.lineTotalMinor, 0),
+  };
 }
