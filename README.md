@@ -10,9 +10,9 @@ DENK is being developed through an AI-assisted—not AI-delegated—workflow. Th
 
 ## Project Status
 
-**Next phase:** Stage 2 — First Vertical Slice: Staff Opens a Bill, Guest Views It
+**Current phase:** Stage 2 — First Vertical Slice: Staff Opens a Bill, Guest Views It
 
-Stage 1 and the Pre-Stage-2 Hardening Transition are complete. The application foundation, protected Git workflow, localhost-only PostgreSQL environment, Prisma tooling, automated tests, browser tests, and CI workflow are established. DENK domain functionality begins in Stage 2.
+Stage 1 and the Pre-Stage-2 Hardening Transition are complete. Stage 2 is now underway: its initial database migration, authentication foundation, controlled development setup, and restaurant-scoped staff authorization are established.
 
 ## Prerequisites
 
@@ -61,24 +61,30 @@ Create the ignored local environment file:
 cp .env.example .env
 ```
 
-Start PostgreSQL:
+In `.env`, replace `BETTER_AUTH_SECRET` and `DENK_SETUP_ADMIN_PASSWORD` with private development values. The remaining setup values may be customized or left at their defaults. Never commit `.env`.
+
+Start PostgreSQL and confirm that it is healthy:
 
 ```bash
 pnpm db:up
-```
-
-Confirm that the database is healthy:
-
-```bash
 pnpm db:status
 ```
 
-Validate the Prisma configuration and generate Prisma Client:
+Validate Prisma, generate its client, and apply committed migrations:
 
 ```bash
 pnpm db:validate
 pnpm db:generate
+pnpm db:migrate:deploy
 ```
+
+Create the local staff account, restaurant, membership, and initial table:
+
+```bash
+pnpm setup:dev
+```
+
+The setup command is development-only and safe to run repeatedly. It does not change the password of an existing development account.
 
 Install the Chromium browser used by Playwright:
 
@@ -92,7 +98,7 @@ Start the development application:
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000/staff](http://localhost:3000/staff) and sign in using the development staff credentials from `.env`.
 
 ## Database
 
@@ -106,6 +112,7 @@ pnpm db:down
 pnpm db:status
 pnpm db:validate
 pnpm db:generate
+pnpm db:migrate:deploy
 pnpm db:migrate:status
 ```
 
@@ -115,7 +122,7 @@ When a roadmap stage introduces a schema change, create a named development migr
 pnpm db:migrate --name descriptive-migration-name
 ```
 
-No DENK domain migration exists yet. The first migration will contain only the minimum schema required by the first vertical slice.
+The first committed migration contains the Better Auth schema and the minimum DENK domain schema required by the Stage 2 vertical slice. CI applies committed migrations to a fresh PostgreSQL database and verifies the resulting migration state.
 
 `pnpm db:down` stops PostgreSQL but preserves its named data volume.
 
@@ -150,7 +157,7 @@ GitHub Actions runs on:
 - Pull requests targeting `main`
 - Pushes to `main`
 
-CI performs a clean dependency installation, Docker Compose validation, Prisma configuration/schema validation, Prisma Client generation, formatting check, lint, route-type generation, TypeScript checking, Vitest tests, production build, and Playwright browser test.
+CI installs dependencies on a clean runner, validates Docker Compose and Prisma configuration, generates Prisma Client, starts a fresh PostgreSQL service, applies committed migrations, verifies migration state, runs database-backed integration tests, and then performs formatting, linting, type-checking, production build, and browser tests.
 
 The protected `main` branch requires changes through pull requests and requires the `Verify` CI check to succeed before merge. Zero approving reviews are required for the current solo-developer workflow; force pushes and deletion of `main` are blocked.
 
