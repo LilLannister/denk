@@ -86,6 +86,13 @@ export default async function StaffPage() {
               {membership.restaurant.tables.map((table) => (
                 <li className="py-2" key={table.id}>
                   <span>{table.name}</span>
+                  <a
+                    aria-label={`Open guest page for ${table.name}`}
+                    className="ml-3 text-sm underline"
+                    href={`/table/${table.publicId}`}
+                  >
+                    Guest table page
+                  </a>
                   <OpenTableSessionForm
                     restaurantTableId={table.id}
                     hasOpenSession={Boolean(table.currentSession)}
