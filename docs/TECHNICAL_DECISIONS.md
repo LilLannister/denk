@@ -40,11 +40,11 @@ This document records the technology and architecture decisions that are settled
 
 ### Layered database verification
 
-**Decision:** Clean-runner CI validates the Docker Compose configuration and Prisma configuration/schema, then generates Prisma Client. When Stage 2 introduces the first meaningful schema migration, CI must also start a fresh PostgreSQL database, apply all committed migrations non-interactively, verify migration state, and run database-backed integration tests. Do not create an empty Stage 1 migration.
+**Decision:** Clean-runner CI validates the Docker Compose configuration and Prisma configuration/schema, generates Prisma Client, starts a fresh PostgreSQL database, applies all committed migrations non-interactively, verifies migration state, and runs database-backed integration tests. Stage 1 intentionally created no empty migration; Stage 2 supplied the first meaningful schema migration.
 
-**Reason:** Static validation catches configuration and generation failures immediately. Fresh-database verification becomes meaningful only when DENK has an actual schema migration. Stage 1 established and locally verified the PostgreSQL and Prisma foundation; Stage 2 supplies the first schema required by product behavior.
+**Reason:** Static validation catches configuration and generation failures immediately. Fresh-database verification proves that DENK's version-controlled schema can be reproduced before application and browser tests run.
 
-**Accepted trade-off:** Before the first Stage 2 migration, CI verifies database tooling but cannot yet prove migration reproducibility against a real schema. That proof is added with the first vertical slice rather than manufacturing migration history with no domain meaning.
+**Accepted trade-off:** CI incurs the cost of running PostgreSQL and database-backed tests on every protected workflow run. That cost provides continuing proof that the committed migration history works from a fresh database.
 
 ### Validation
 
@@ -53,6 +53,32 @@ This document records the technology and architecture decisions that are settled
 **Reason:** Client requests, route parameters, environment variables, and provider callbacks must be parsed before application services use them.
 
 **Accepted trade-off:** Runtime schemas add some duplication beside TypeScript types; that duplication is justified where data crosses a trust boundary.
+
+## Restaurant Catalog and Bill Snapshots
+
+### Restaurant-scoped catalog identity
+
+**Decision:** Introduce `CatalogItem` in Stage 3 as restaurant-scoped reference data. Each item has a stable, normalized lowercase key that is unique within its restaurant, a display name, an exact TRY unit price in integer kuruş, an active state, and audit-friendly timestamps. Database identifiers remain internal; the stable key is the operator-facing import identity.
+
+**Reason:** Restaurant products need durable identity across repeated imports and display-name or price changes. Scoping uniqueness to the restaurant preserves tenant isolation while allowing different restaurants to use the same familiar keys.
+
+**Accepted trade-off:** Stable keys become long-lived operational identifiers and therefore require validation and deliberate change handling. V1 does not introduce global products, variants, categories, tax modeling, or multi-currency catalog abstractions.
+
+### Controlled catalog import
+
+**Decision:** Manage the V1 catalog through an operator-controlled, schema-validated JSON import that targets one explicit restaurant. Apply a valid import atomically and idempotently by stable key. Reject duplicate keys and invalid records before mutation. Omitted entries remain unchanged; activation changes must be explicit; normal V1 operation deactivates rather than physically deletes catalog items. A self-service restaurant catalog-management UI is deferred beyond V1 unless later evidence changes the scope.
+
+**Reason:** A controlled import provides reproducible catalog setup and updates without spending the V1 schedule on a broad administration interface. Atomic validation prevents partially applied menus, while explicit activation prevents accidental disappearance when an import contains only a subset.
+
+**Accepted trade-off:** Catalog changes require an operator workflow and a documented JSON contract. Import files are not the runtime source of truth: PostgreSQL remains authoritative after a successful import.
+
+### Bill-item financial snapshots
+
+**Decision:** A bill item created from a catalog entry snapshots the item name and `unitPriceMinor` used for that bill. It may retain a nullable `catalogItemId` for traceability, but its stored snapshot—not the current catalog record—is the financial truth. Editing, deactivating, or later reactivating a catalog item must not rewrite existing bills.
+
+**Reason:** A live restaurant catalog is mutable reference data, whereas an opened bill must remain explainable and stable. Snapshotting prevents a later menu update from silently changing what a guest owes or what a completed payment represents.
+
+**Accepted trade-off:** Names and prices are intentionally duplicated between catalog items and bill items. Reporting must distinguish current catalog data from historical bill snapshots.
 
 ## Identity and Authorization
 
@@ -74,7 +100,7 @@ This document records the technology and architecture decisions that are settled
 
 ### Anonymous guest identity
 
-**Decision:** Keep guests outside Better Auth. Create a short-lived, opaque, database-backed `GuestSession` scoped to the active table/bill session. Send its bearer credential in a Secure, HttpOnly cookie and store only a cryptographic hash of the token in PostgreSQL.
+**Decision:** Keep guests outside Better Auth. Create a short-lived, opaque, database-backed `GuestSession` scoped to the active table/bill session. Send its bearer credential in a route-scoped, HttpOnly, SameSite cookie with explicit expiry and `Secure` enabled in production, and store only a cryptographic hash of the token in PostgreSQL.
 
 **Reason:** Guests need no permanent account, but the server still needs a revocable identity with a narrow scope. An opaque credential avoids exposing database identifiers or trusting editable client state. Hashing limits the damage if stored session data is exposed.
 
@@ -82,7 +108,7 @@ This document records the technology and architecture decisions that are settled
 
 ### Join code and guest bearer credential
 
-**Decision:** Treat the temporary join code and guest bearer token as separate credentials. The join code is a human-usable, lower-entropy credential scoped to one current table session, normalized before validation, expired by the server, and used only during each guest-session join exchange; multiple guests may join while the code remains valid. Use at least eight unambiguous base32-style characters and store a keyed cryptographic digest rather than the raw code. Invalid table, code, and expiry cases return the same public result. The guest bearer token contains at least 256 random bits, is stored only as a cryptographic hash, and is delivered in a scoped Secure, HttpOnly cookie with explicit expiry.
+**Decision:** Treat the temporary join code and guest bearer token as separate credentials. The join code is a human-usable, lower-entropy credential scoped to one current table session, normalized before validation, expired by the server, and used only during each guest-session join exchange; multiple guests may join while the code remains valid. Use exactly eight unambiguous base32-style characters and store a keyed cryptographic digest rather than the raw code. Invalid table, code, and expiry cases return the same public result. The guest bearer token contains at least 256 random bits, is stored only as a cryptographic hash, and is delivered in a route-scoped, HttpOnly, SameSite cookie with explicit expiry and `Secure` enabled in production.
 
 **Reason:** A join code grants only initial entry and is more guessable; a bearer token authenticates subsequent guest access and therefore requires substantially higher entropy. Separate handling prevents a convenient human code from becoming a long-lived session secret and limits information leakage during guessing.
 
@@ -198,6 +224,9 @@ No blocking inconsistencies found.
 
 The decisions preserve these invariants:
 
+- catalog identity is restaurant-scoped and stable across idempotent imports;
+- invalid catalog input cannot partially mutate catalog state, and omission is not deletion;
+- mutable catalog data cannot rewrite a bill item's financial snapshot;
 - financial correctness does not depend on polling;
 - concurrent allocation is protected in server/database transactions;
 - guest identity is separate from Better Auth;

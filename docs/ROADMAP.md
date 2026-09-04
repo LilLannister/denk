@@ -70,9 +70,11 @@ This small repository-hardening transition was completed after the Stage 1 revie
 - clean-runner CI validates the Docker Compose configuration and Prisma configuration/schema and generates Prisma Client; and
 - PR #6 passed the required `Verify` check, merged through the protected workflow, and was followed by a successful `main` CI run.
 
-When Stage 2 creates its first meaningful schema migration, CI will add the second database-verification level: start a fresh PostgreSQL database, apply all committed migrations non-interactively, verify migration state, and run database-backed integration tests. That migration belongs to the first vertical slice and must contain only schema required by that behavior.
+Stage 2 added the second database-verification level: CI starts a fresh PostgreSQL database, applies all committed migrations non-interactively, verifies migration state, and runs database-backed integration tests. The first migration contains only the Better Auth and DENK domain schema required by that vertical slice.
 
 ## Stage 2 — First Vertical Slice: Staff Opens a Bill, Guest Views It
+
+**Status: Complete.**
 
 ### Goal
 
@@ -100,7 +102,7 @@ This is a concise implementation gate, not another planning phase. Once these bo
 5. Implement a thin authorization path that receives authenticated user identity, resolves DENK membership, and proves the user may operate the restaurant-owned table.
 6. Build a staff view to open the table's one Stage 2 current session and manually create bill items with validated name, positive quantity, and integer `unitPriceMinor` in TRY.
 7. Create a stable, opaque QR/table entry route and require the current session's normalized, expiring join code without leaking whether the table, session, or code caused rejection.
-8. On successful join, issue a high-entropy guest bearer credential, store only its hash, bind `GuestSession` to exactly one table session, and set the credential in a scoped Secure, HttpOnly cookie with expiry.
+8. On successful join, issue a high-entropy guest bearer credential, store only its hash, bind `GuestSession` to exactly one table session, and set the credential in a route-scoped, HttpOnly, SameSite cookie with explicit expiry and `Secure` enabled in production.
 9. Build an explicit guest bill projection through server-side application services rather than querying Prisma from UI components.
 10. Show useful not-found, unavailable-session, invalid-join, and expired/revoked-session states without exposing internal distinctions to unauthorized guests.
 11. Add a Playwright path covering the entire first slice with separate staff and guest browser contexts.
@@ -137,26 +139,61 @@ This is a concise implementation gate, not another planning phase. Once these bo
 
 An authorized staff user can create the minimal active bill, and a guest with the correct table access and join code can anonymously receive a scoped session and view that bill end to end.
 
+### Completion Record
+
+Stage 2 delivered and verified the complete first vertical slice:
+
+- Better Auth owns persistent staff identity and sessions, while DENK enforces restaurant-scoped `ADMIN` and `STAFF` membership in application services;
+- the first committed migration contains the minimum Better Auth and DENK domain schema, and CI applies it to fresh PostgreSQL before running database-backed integration tests;
+- controlled development and E2E setup create repeatable staff, restaurant, membership, table, and browser-test fixtures;
+- authorized staff can open the table's single Stage 2 current session, rotate its temporary join code, and add validated TRY bill items;
+- join codes use eight unambiguous base32-style characters, expire server-side, and are stored only as keyed digests;
+- anonymous guests exchange a valid join code for a table-session-scoped bearer credential whose hash alone is persisted and whose cookie is route-scoped, HttpOnly, SameSite, explicitly expiring, and Secure in production;
+- the guest page consumes an explicit bill projection that excludes credential material and unnecessary internal identifiers;
+- PostgreSQL integer limits, exact kuruş parsing and presentation, safe line-total arithmetic, cross-restaurant denial, repeated and concurrent session opening, invalid and expired credentials, and projection boundaries have automated coverage; and
+- Playwright verifies the full staff-to-guest journey in separate browser contexts, including staff authentication, bill creation, guest joining, cookie isolation, and TRY totals.
+
+PRs #9 through #16 established the Stage 2 foundation, staff authorization, table-session opening, anonymous guest access, bill-item entry, hardened join codes, the complete browser journey, and the final boundary-hardening pass. Each merged through the protected `main` workflow with successful pull-request and post-merge CI.
+
+Stage 2 intentionally leaves table administration, complete session lifecycle and history, catalog-backed restaurant operations, bill correction, allocation, and payment invariants to later stages.
+
+## Pre-Stage-3 Documentation Transition
+
+**Status: Complete.**
+
+This short transition closes Stage 2 without reopening its implementation and sharpens Stage 3 around the next operational boundary:
+
+- record Stage 2 as complete against its exit condition and verification evidence;
+- introduce the restaurant-scoped `CatalogItem` decision needed before bill correction and later allocation work;
+- define a controlled, idempotent JSON import as the V1 catalog-management boundary instead of building a self-service catalog UI; and
+- preserve bill-item name and price snapshots as financial truth even when a bill item traces back to a catalog entry.
+
 ## Stage 3 — Restaurant Operations, Tables, and Bill Integrity
 
 ### Goal
 
-Turn the first slice into a safe restaurant workflow for managing tables and correcting an active bill without weakening tenant or financial boundaries.
+Turn the first slice into a safe restaurant workflow for managing a controlled product catalog, tables, session lifecycle, and active-bill corrections without weakening tenant or financial boundaries.
 
 ### What I Will Implement
 
-1. Complete application-level `ADMIN` and `STAFF` authorization rules and central restaurant/resource ownership checks.
-2. Let Admin manage restaurant tables and their stable QR identities; let authorized restaurant users view operational table state.
-3. Define lifecycle rules for opening, identifying, and closing table/bill sessions, including the rule preventing ambiguous simultaneous active sessions for one table.
-4. Add staff bill operations for item creation, correction, quantity changes, and removal while the changes are still financially safe.
-5. Handle multiple quantities of identical products as explicit quantities/units suitable for later allocation.
-6. Decide and enforce what staff may change after allocations or successful payments exist; preserve completed payment history and prevent casual financial rewriting.
-7. Add audit-friendly timestamps and records where needed to explain operational state changes without building event sourcing.
+1. Finalize application-level `ADMIN` and `STAFF` capability boundaries and central restaurant/resource ownership checks for Stage 3 operations.
+2. Add restaurant-scoped `CatalogItem` records with a stable lowercase key, display name, exact TRY unit price, active state, and audit-friendly timestamps.
+3. Add an operator-controlled, schema-validated JSON import that targets one explicit restaurant and applies catalog changes atomically and idempotently. Reject duplicate keys; treat omitted entries as unchanged; require explicit deactivation or reactivation; and do not physically delete catalog items during normal V1 operation.
+4. Let Admin manage restaurant tables and their stable QR identities; let authorized restaurant users view operational table state.
+5. Define lifecycle rules for opening, identifying, and closing table/bill sessions, including history and the rule preventing ambiguous simultaneous active sessions for one table.
+6. Create new bill items from active catalog entries during normal restaurant operation while retaining validated manual entry only where an explicit development or recovery boundary requires it.
+7. Preserve each bill item's name and unit-price snapshot as financial truth, optionally retaining its catalog-item reference for traceability; later catalog changes must not rewrite an existing bill.
+8. Add staff bill operations for correction, quantity changes, and removal while the changes are still financially safe.
+9. Handle multiple quantities of identical products as explicit quantities/units suitable for later allocation.
+10. Decide and enforce what staff may change after allocations or successful payments exist; preserve completed payment history and prevent casual financial rewriting.
+11. Add audit-friendly timestamps and records where needed to explain operational state changes without building event sourcing.
 
 ### Engineering Concepts I Should Understand
 
 - role-based and resource-based authorization;
 - multi-tenant ownership checks;
+- stable import identities, idempotency, and atomic import boundaries;
+- catalog reference data versus immutable bill snapshots;
 - database uniqueness and lifecycle invariants;
 - mutable operational data versus immutable financial truth;
 - safe schema evolution through small migrations.
@@ -165,6 +202,9 @@ Turn the first slice into a safe restaurant workflow for managing tables and cor
 
 - Admin and Staff capabilities match the finalized role boundaries.
 - Cross-restaurant reads and mutations fail even when valid resource IDs are supplied directly.
+- Repeating the same valid catalog import produces the same state; invalid or duplicate input leaves the catalog unchanged.
+- Catalog imports cannot affect another restaurant, omission does not deactivate an item, and explicit deactivate/reactivate operations behave predictably.
+- Existing bill-item names and prices do not change when their catalog entry is edited or deactivated.
 - Two active sessions cannot be opened for the same table if the lifecycle forbids it.
 - Invalid prices, quantities, and state transitions are rejected server-side.
 - Corrections before allocation work; unsafe corrections after allocation/payment are blocked or handled by the explicit rule.
@@ -173,12 +213,13 @@ Turn the first slice into a safe restaurant workflow for managing tables and cor
 ### Suggested Git Checkpoints
 
 - `feat: enforce restaurant roles and ownership`
+- `feat: import restaurant catalog items`
 - `feat: manage tables and table-session lifecycle`
 - `feat: protect active bill corrections`
 
 ### Exit Condition
 
-Restaurant users can safely manage tables and active bills within their authorized scope, and bill edits cannot bypass lifecycle or completed-payment invariants.
+Restaurant users can safely operate from a controlled restaurant catalog, manage tables and active bills within their authorized scope, and make only corrections permitted by lifecycle and completed-payment invariants.
 
 ## Stage 4 — Whole-Item Allocation and Payable Calculation
 
