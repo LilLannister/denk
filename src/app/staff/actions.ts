@@ -16,12 +16,12 @@ import {
 } from "@/lib/table-session";
 
 import {
+  BillItemCatalogItemUnavailableError,
   BillItemTableNotFoundError,
   BillItemTableSessionNotOpenError,
   InvalidBillItemError,
   addBillItem,
 } from "@/lib/bill-item";
-import { InvalidMoneyAmountError, parseAmountToMinorUnits } from "@/lib/money";
 
 export type OpenTableSessionState = {
   status: "idle" | "success" | "error";
@@ -164,9 +164,8 @@ export type AddBillItemState = {
 
 const addBillItemFormSchema = z.object({
   restaurantTableId: z.string().min(1),
-  name: z.string().trim().min(1).max(120),
+  catalogItemId: z.string().min(1),
   quantity: z.coerce.number().int().positive(),
-  unitPrice: z.string().min(1),
 });
 
 export async function addBillItemAction(
@@ -183,15 +182,14 @@ export async function addBillItemAction(
 
   const parsedForm = addBillItemFormSchema.safeParse({
     restaurantTableId: formData.get("restaurantTableId"),
-    name: formData.get("name"),
+    catalogItemId: formData.get("catalogItemId"),
     quantity: formData.get("quantity"),
-    unitPrice: formData.get("unitPrice"),
   });
 
   if (!parsedForm.success) {
     return {
       status: "error",
-      message: "Enter a valid name, quantity, and unit price.",
+      message: "Select a catalog item and enter a valid quantity.",
     };
   }
 
@@ -199,9 +197,8 @@ export async function addBillItemAction(
     await addBillItem({
       userId: session.user.id,
       restaurantTableId: parsedForm.data.restaurantTableId,
-      name: parsedForm.data.name,
+      catalogItemId: parsedForm.data.catalogItemId,
       quantity: parsedForm.data.quantity,
-      unitPriceMinor: parseAmountToMinorUnits(parsedForm.data.unitPrice),
     });
 
     revalidatePath("/staff");
@@ -211,13 +208,17 @@ export async function addBillItemAction(
       message: "Bill item added.",
     };
   } catch (error) {
-    if (
-      error instanceof InvalidBillItemError ||
-      error instanceof InvalidMoneyAmountError
-    ) {
+    if (error instanceof InvalidBillItemError) {
       return {
         status: "error",
-        message: "Enter a valid name, quantity, and unit price.",
+        message: "Select a catalog item and enter a valid quantity.",
+      };
+    }
+
+    if (error instanceof BillItemCatalogItemUnavailableError) {
+      return {
+        status: "error",
+        message: "This catalog item is no longer available.",
       };
     }
 

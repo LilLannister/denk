@@ -97,6 +97,49 @@ async function main() {
     },
   });
 
+  const catalogCategory = await prisma.catalogCategory.upsert({
+    where: {
+      restaurantId_key: {
+        restaurantId: restaurant.id,
+        key: stage2Fixture.catalogCategoryKey,
+      },
+    },
+    update: {
+      name: stage2Fixture.catalogCategoryName,
+      sortOrder: 10,
+    },
+    create: {
+      restaurantId: restaurant.id,
+      key: stage2Fixture.catalogCategoryKey,
+      name: stage2Fixture.catalogCategoryName,
+      sortOrder: 10,
+    },
+  });
+
+  await prisma.catalogItem.upsert({
+    where: {
+      restaurantId_key: {
+        restaurantId: restaurant.id,
+        key: stage2Fixture.catalogItemKey,
+      },
+    },
+    update: {
+      categoryId: catalogCategory.id,
+      name: stage2Fixture.catalogItemName,
+      unitPriceMinor: stage2Fixture.catalogItemPriceMinor,
+      isActive: true,
+      sortOrder: 10,
+    },
+    create: {
+      restaurantId: restaurant.id,
+      categoryId: catalogCategory.id,
+      key: stage2Fixture.catalogItemKey,
+      name: stage2Fixture.catalogItemName,
+      unitPriceMinor: stage2Fixture.catalogItemPriceMinor,
+      sortOrder: 10,
+    },
+  });
+
   await prisma.tableSession.deleteMany({
     where: {
       restaurantTableId: restaurantTable.id,

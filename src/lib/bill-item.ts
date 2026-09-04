@@ -1,21 +1,17 @@
 import { z } from "zod";
+
 import { InvalidMoneyAmountError, addMinorUnits } from "./money";
 import { prisma } from "./prisma";
 import { requireRestaurantMembership } from "./staff-authorization";
 
 const maximumDatabaseInteger = 2_147_483_647;
 
-const addBillItemSchema = z
-  .object({
-    userId: z.string().min(1),
-    restaurantTableId: z.string().min(1),
-    name: z.string().trim().min(1).max(120),
-    quantity: z.number().int().positive().max(maximumDatabaseInteger),
-    unitPriceMinor: z.number().int().positive().max(maximumDatabaseInteger),
-  })
-  .refine(({ quantity, unitPriceMinor }) =>
-    Number.isSafeInteger(quantity * unitPriceMinor),
-  );
+const addBillItemSchema = z.object({
+  userId: z.string().min(1),
+  restaurantTableId: z.string().min(1),
+  catalogItemId: z.string().min(1),
+  quantity: z.number().int().positive().max(maximumDatabaseInteger),
+});
 
 export class InvalidBillItemError extends Error {
   constructor() {
@@ -38,12 +34,18 @@ export class BillItemTableSessionNotOpenError extends Error {
   }
 }
 
+export class BillItemCatalogItemUnavailableError extends Error {
+  constructor() {
+    super("Catalog item is unavailable");
+    this.name = "BillItemCatalogItemUnavailableError";
+  }
+}
+
 export async function addBillItem(input: {
   userId: string;
   restaurantTableId: string;
-  name: string;
+  catalogItemId: string;
   quantity: number;
-  unitPriceMinor: number;
 }) {
   const parsedInput = addBillItemSchema.safeParse(input);
 
@@ -84,6 +86,23 @@ export async function addBillItem(input: {
     throw new BillItemTableSessionNotOpenError();
   }
 
+  const catalogItem = await prisma.catalogItem.findFirst({
+    where: {
+      id: parsedInput.data.catalogItemId,
+      restaurantId: restaurantTable.restaurantId,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      name: true,
+      unitPriceMinor: true,
+    },
+  });
+
+  if (!catalogItem) {
+    throw new BillItemCatalogItemUnavailableError();
+  }
+
   try {
     const currentTotalMinor = restaurantTable.currentSession.billItems.reduce(
       (total, item) =>
@@ -92,7 +111,11 @@ export async function addBillItem(input: {
     );
 
     const newLineTotalMinor =
-      parsedInput.data.quantity * parsedInput.data.unitPriceMinor;
+      parsedInput.data.quantity * catalogItem.unitPriceMinor;
+
+    if (!Number.isSafeInteger(newLineTotalMinor)) {
+      throw new InvalidBillItemError();
+    }
 
     addMinorUnits(currentTotalMinor, newLineTotalMinor);
   } catch (error) {
@@ -106,9 +129,10 @@ export async function addBillItem(input: {
   return prisma.billItem.create({
     data: {
       tableSessionId: restaurantTable.currentSession.id,
-      name: parsedInput.data.name,
+      catalogItemId: catalogItem.id,
+      name: catalogItem.name,
       quantity: parsedInput.data.quantity,
-      unitPriceMinor: parsedInput.data.unitPriceMinor,
+      unitPriceMinor: catalogItem.unitPriceMinor,
     },
   });
 }

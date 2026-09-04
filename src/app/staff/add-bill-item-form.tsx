@@ -2,6 +2,9 @@
 
 import { useActionState, useEffect, useRef } from "react";
 
+import { formatTryAmount } from "@/lib/money";
+import type { StaffCatalogCategory } from "@/lib/staff-workspace";
+
 import { addBillItemAction, type AddBillItemState } from "./actions";
 
 const initialState: AddBillItemState = {
@@ -9,8 +12,10 @@ const initialState: AddBillItemState = {
 };
 
 export function AddBillItemForm({
+  catalogCategories,
   restaurantTableId,
 }: {
+  catalogCategories: StaffCatalogCategory[];
   restaurantTableId: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -36,17 +41,26 @@ export function AddBillItemForm({
       <div>
         <label
           className="block text-sm"
-          htmlFor={`item-name-${restaurantTableId}`}
+          htmlFor={`catalog-item-${restaurantTableId}`}
         >
-          Item name
+          Catalog item
         </label>
-        <input
+        <select
           className="mt-1 w-full rounded border px-3 py-2"
-          id={`item-name-${restaurantTableId}`}
-          name="name"
-          maxLength={120}
+          id={`catalog-item-${restaurantTableId}`}
+          name="catalogItemId"
           required
-        />
+        >
+          {catalogCategories.map((category) => (
+            <optgroup key={category.key} label={category.name}>
+              {category.items.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} — {formatTryAmount(item.unitPriceMinor)}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
       </div>
 
       <div>
@@ -64,24 +78,6 @@ export function AddBillItemForm({
           min="1"
           step="1"
           defaultValue="1"
-          required
-        />
-      </div>
-
-      <div>
-        <label
-          className="block text-sm"
-          htmlFor={`item-price-${restaurantTableId}`}
-        >
-          Unit price (TRY)
-        </label>
-        <input
-          className="mt-1 w-full rounded border px-3 py-2"
-          id={`item-price-${restaurantTableId}`}
-          name="unitPrice"
-          type="text"
-          inputMode="decimal"
-          placeholder="12.50"
           required
         />
       </div>

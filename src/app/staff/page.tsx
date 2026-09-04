@@ -90,7 +90,18 @@ export default async function StaffPage() {
                         {formatTryAmount(table.currentSession.totalMinor)}
                       </p>
 
-                      <AddBillItemForm restaurantTableId={table.id} />
+                      {membership.restaurant.catalogCategories.length === 0 ? (
+                        <p className="mt-4 text-sm text-gray-600">
+                          No active catalog items are available.
+                        </p>
+                      ) : (
+                        <AddBillItemForm
+                          catalogCategories={
+                            membership.restaurant.catalogCategories
+                          }
+                          restaurantTableId={table.id}
+                        />
+                      )}
                     </div>
                   ) : null}
                 </li>
