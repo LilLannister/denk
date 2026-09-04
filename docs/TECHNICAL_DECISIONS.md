@@ -112,7 +112,7 @@ This document records the technology and architecture decisions that are settled
 
 **Reason:** A join code grants only initial entry and is more guessable; a bearer token authenticates subsequent guest access and therefore requires substantially higher entropy. Separate handling prevents a convenient human code from becoming a long-lived session secret and limits information leakage during guessing.
 
-**Accepted trade-off:** Stage 2 uses entropy, short validity, session scoping, uniform errors, and observable failed attempts without adding Redis, CAPTCHA, or distributed rate-limiting infrastructure. Deployment-aware rate limiting must be reviewed before public launch if measured risk requires it.
+**Accepted trade-off:** Stage 2 uses entropy, short validity, session scoping, and uniform errors without adding Redis, CAPTCHA, failed-attempt monitoring, or distributed rate-limiting infrastructure. Failed-attempt observability and deployment-aware rate limiting must be reviewed before public launch and implemented if the deployment model or measured risk requires them.
 
 ## Shared Bill Updates and Correctness
 

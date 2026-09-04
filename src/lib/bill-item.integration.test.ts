@@ -159,6 +159,36 @@ describe("adding bill items", () => {
     ).rejects.toThrow(BillItemTableSessionNotOpenError);
   });
 
+  it("rejects an item that would make the bill total unsafe", async () => {
+    await addBillItem({
+      userId,
+      restaurantTableId,
+      name: "Large item one",
+      quantity: 2_000_000_000,
+      unitPriceMinor: 4_000_000,
+    });
+
+    await expect(
+      addBillItem({
+        userId,
+        restaurantTableId,
+        name: "Large item two",
+        quantity: 2_000_000_000,
+        unitPriceMinor: 4_000_000,
+      }),
+    ).rejects.toThrow(InvalidBillItemError);
+
+    expect(
+      await prisma.billItem.count({
+        where: {
+          tableSession: {
+            restaurantTableId,
+          },
+        },
+      }),
+    ).toBe(1);
+  });
+
   it.each([
     { name: "", quantity: 1, unitPriceMinor: 100 },
     { name: "Invalid quantity", quantity: 0, unitPriceMinor: 100 },

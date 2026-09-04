@@ -1,6 +1,7 @@
 import { parseEnvironment } from "./env";
 import { generateGuestToken, hashGuestToken } from "./guest-token";
 import { verifyJoinCode } from "./join-code";
+import { addMinorUnits } from "./money";
 import { prisma } from "./prisma";
 
 const GUEST_SESSION_LIFETIME_MS = 12 * 60 * 60 * 1_000;
@@ -125,6 +126,9 @@ export async function getGuestBillProjection({
   return {
     tableName: guestSession.tableSession.restaurantTable.name,
     items,
-    totalMinor: items.reduce((total, item) => total + item.lineTotalMinor, 0),
+    totalMinor: items.reduce(
+      (total, item) => addMinorUnits(total, item.lineTotalMinor),
+      0,
+    ),
   };
 }
