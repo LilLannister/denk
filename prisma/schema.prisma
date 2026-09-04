@@ -79,12 +79,13 @@ enum RestaurantRole {
 }
 
 model Restaurant {
-  id          String                 @id @default(cuid())
-  name        String
-  createdAt   DateTime               @default(now())
-  updatedAt   DateTime               @updatedAt
-  memberships RestaurantMembership[]
-  tables      RestaurantTable[]
+  id                String                 @id @default(cuid())
+  name              String
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  memberships       RestaurantMembership[]
+  tables            RestaurantTable[]
+  catalogCategories CatalogCategory[]
 
   @@map("restaurant")
 }
@@ -102,6 +103,43 @@ model RestaurantMembership {
   @@unique([restaurantId, userId])
   @@index([userId])
   @@map("restaurant_membership")
+}
+
+model CatalogCategory {
+  id           String        @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  key          String
+  name         String
+  sortOrder    Int
+  items        CatalogItem[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([restaurantId, key])
+  @@unique([id, restaurantId])
+  @@index([restaurantId, sortOrder])
+  @@map("catalog_category")
+}
+
+model CatalogItem {
+  id             String          @id @default(cuid())
+  restaurantId   String
+  categoryId     String
+  category       CatalogCategory @relation(fields: [categoryId, restaurantId], references: [id, restaurantId], onDelete: Cascade)
+  key            String
+  name           String
+  unitPriceMinor Int
+  isActive       Boolean         @default(true)
+  sortOrder      Int
+  billItems      BillItem[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([restaurantId, key])
+  @@index([categoryId, sortOrder])
+  @@index([restaurantId, isActive])
+  @@map("catalog_item")
 }
 
 model RestaurantTable {
@@ -136,6 +174,8 @@ model BillItem {
   id             String       @id @default(cuid())
   tableSessionId String
   tableSession   TableSession @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
+  catalogItemId  String?
+  catalogItem    CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
   name           String
   quantity       Int
   unitPriceMinor Int
@@ -143,6 +183,7 @@ model BillItem {
   updatedAt      DateTime     @updatedAt
 
   @@index([tableSessionId])
+  @@index([catalogItemId])
   @@map("bill_item")
 }
 
