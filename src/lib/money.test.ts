@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-
 import {
   InvalidMoneyAmountError,
+  addMinorUnits,
   formatMinorUnits,
   formatTryAmount,
   parseAmountToMinorUnits,
@@ -33,6 +33,28 @@ describe("money utilities", () => {
     expect(() => parseAmountToMinorUnits(input)).toThrow(
       InvalidMoneyAmountError,
     );
+  });
+
+  it("adds minor-unit amounts exactly", () => {
+    expect(addMinorUnits(25_100, 500)).toBe(25_600);
+    expect(addMinorUnits(Number.MAX_SAFE_INTEGER, 0)).toBe(
+      Number.MAX_SAFE_INTEGER,
+    );
+  });
+
+  it("rejects an unsafe aggregate amount", () => {
+    expect(() => addMinorUnits(Number.MAX_SAFE_INTEGER, 1)).toThrow(
+      InvalidMoneyAmountError,
+    );
+  });
+
+  it.each([
+    [-1, 1],
+    [1, -1],
+    [1.5, 1],
+    [1, 1.5],
+  ])("rejects invalid minor-unit operands", (left, right) => {
+    expect(() => addMinorUnits(left, right)).toThrow(InvalidMoneyAmountError);
   });
 
   it("formats minor units without floating-point arithmetic", () => {

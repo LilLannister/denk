@@ -12,7 +12,7 @@ DENK is being developed through an AI-assisted—not AI-delegated—workflow. Th
 
 **Next phase:** Stage 3 — Restaurant Operations, Tables, and Bill Integrity
 
-Stage 1, the Pre-Stage-2 Hardening Transition, Stage 2, and the Pre-Stage-3 Documentation Transition are complete. The first vertical slice supports the verified journey: authenticated restaurant staff opens and populates a bill, then an anonymous guest joins through a scoped credential and views exact TRY totals. Stage 3 will build catalog-backed restaurant operations, complete table-session lifecycle behavior, and safe bill correction on that foundation.
+Stage 1, the Pre-Stage-2 Hardening Transition, Stage 2, the Pre-Stage-3 Documentation Transition, and the independent review corrections are complete. The first vertical slice supports the verified journey: authenticated restaurant staff opens and populates a bill, then an anonymous guest joins through a scoped credential and views exact TRY totals. Stage 3 will build catalog-backed restaurant operations, complete table-session lifecycle behavior, and safe bill correction on that foundation.
 
 ## Prerequisites
 

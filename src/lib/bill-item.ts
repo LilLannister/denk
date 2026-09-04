@@ -1,5 +1,5 @@
 import { z } from "zod";
-
+import { InvalidMoneyAmountError, addMinorUnits } from "./money";
 import { prisma } from "./prisma";
 import { requireRestaurantMembership } from "./staff-authorization";
 
@@ -60,6 +60,12 @@ export async function addBillItem(input: {
       currentSession: {
         select: {
           id: true,
+          billItems: {
+            select: {
+              quantity: true,
+              unitPriceMinor: true,
+            },
+          },
         },
       },
     },
@@ -76,6 +82,25 @@ export async function addBillItem(input: {
 
   if (!restaurantTable.currentSession) {
     throw new BillItemTableSessionNotOpenError();
+  }
+
+  try {
+    const currentTotalMinor = restaurantTable.currentSession.billItems.reduce(
+      (total, item) =>
+        addMinorUnits(total, item.quantity * item.unitPriceMinor),
+      0,
+    );
+
+    const newLineTotalMinor =
+      parsedInput.data.quantity * parsedInput.data.unitPriceMinor;
+
+    addMinorUnits(currentTotalMinor, newLineTotalMinor);
+  } catch (error) {
+    if (error instanceof InvalidMoneyAmountError) {
+      throw new InvalidBillItemError();
+    }
+
+    throw error;
   }
 
   return prisma.billItem.create({

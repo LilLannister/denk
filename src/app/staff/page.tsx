@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
-import { formatTryAmount } from "@/lib/money";
+import { addMinorUnits, formatTryAmount } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 
 import { AddBillItemForm } from "./add-bill-item-form";
@@ -119,7 +119,10 @@ export default async function StaffPage() {
                         {formatTryAmount(
                           table.currentSession.billItems.reduce(
                             (total, item) =>
-                              total + item.quantity * item.unitPriceMinor,
+                              addMinorUnits(
+                                total,
+                                item.quantity * item.unitPriceMinor,
+                              ),
                             0,
                           ),
                         )}

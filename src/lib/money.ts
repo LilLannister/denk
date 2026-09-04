@@ -30,6 +30,25 @@ export function parseAmountToMinorUnits(value: string): number {
   return Number(minorUnits);
 }
 
+export function addMinorUnits(left: number, right: number): number {
+  if (
+    !Number.isSafeInteger(left) ||
+    left < 0 ||
+    !Number.isSafeInteger(right) ||
+    right < 0
+  ) {
+    throw new InvalidMoneyAmountError();
+  }
+
+  const total = left + right;
+
+  if (!Number.isSafeInteger(total)) {
+    throw new InvalidMoneyAmountError();
+  }
+
+  return total;
+}
+
 export function formatMinorUnits(value: number): string {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new InvalidMoneyAmountError();

@@ -1,11 +1,9 @@
 import { randomUUID } from "node:crypto";
-
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
-
 import { verifyGuestToken } from "./guest-token";
 import { digestJoinCode } from "./join-code";
+import { InvalidMoneyAmountError } from "./money";
 import { prisma } from "./prisma";
-
 import {
   GuestJoinDeniedError,
   getGuestBillProjection,
@@ -153,6 +151,41 @@ describe("guest table-session joining", () => {
       ],
       totalMinor: 25_600,
     });
+  });
+
+  it("rejects a bill whose aggregate total is not a safe integer", async () => {
+    const now = new Date("2026-09-03T12:00:00.000Z");
+
+    const joined = await joinTableSession({
+      publicTableId,
+      joinCode,
+      now,
+    });
+
+    await prisma.billItem.createMany({
+      data: [
+        {
+          tableSessionId,
+          name: "Large item one",
+          quantity: 2_000_000_000,
+          unitPriceMinor: 4_000_000,
+        },
+        {
+          tableSessionId,
+          name: "Large item two",
+          quantity: 2_000_000_000,
+          unitPriceMinor: 4_000_000,
+        },
+      ],
+    });
+
+    await expect(
+      getGuestBillProjection({
+        publicTableId,
+        token: joined.token,
+        now,
+      }),
+    ).rejects.toThrow(InvalidMoneyAmountError);
   });
 
   it("rejects an incorrect join code", async () => {

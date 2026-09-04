@@ -168,6 +168,18 @@ This short transition closes Stage 2 without reopening its implementation and sh
 - define a controlled, idempotent JSON import as the V1 catalog-management boundary instead of building a self-service catalog UI; and
 - preserve bill-item name and price snapshots as financial truth even when a bill item traces back to a catalog entry.
 
+## Pre-Stage-3 Review Corrections
+
+**Status: Complete.**
+
+An independent review after the Stage 2 closure confirmed its exit condition while identifying three focused follow-ups:
+
+- shared checked minor-unit addition now rejects an aggregate bill total that exceeds JavaScript's safe-integer range; the guest projection, staff display, and normal bill-item creation path use that rule, with unit and integration coverage;
+- failed join attempts were not yet meaningfully observable, so the V1 technical decision now defers failed-attempt monitoring and deployment-aware rate limiting to public-launch hardening instead of claiming Stage 2 already provides them; and
+- the authenticated staff read model remains safe for the completed slice, while moving its growing Prisma query and derived totals into a focused staff workspace projection is explicit Stage 3 maintainability work.
+
+These corrections preserve Stage 2's completed status: they strengthen a financial boundary, align documentation with the implementation, and schedule a concrete refactor without changing the delivered end-to-end behavior.
+
 ## Stage 3 — Restaurant Operations, Tables, and Bill Integrity
 
 ### Goal
@@ -177,16 +189,17 @@ Turn the first slice into a safe restaurant workflow for managing a controlled p
 ### What I Will Implement
 
 1. Finalize application-level `ADMIN` and `STAFF` capability boundaries and central restaurant/resource ownership checks for Stage 3 operations.
-2. Add restaurant-scoped `CatalogItem` records with a stable lowercase key, display name, exact TRY unit price, active state, and audit-friendly timestamps.
-3. Add an operator-controlled, schema-validated JSON import that targets one explicit restaurant and applies catalog changes atomically and idempotently. Reject duplicate keys; treat omitted entries as unchanged; require explicit deactivation or reactivation; and do not physically delete catalog items during normal V1 operation.
-4. Let Admin manage restaurant tables and their stable QR identities; let authorized restaurant users view operational table state.
-5. Define lifecycle rules for opening, identifying, and closing table/bill sessions, including history and the rule preventing ambiguous simultaneous active sessions for one table.
-6. Create new bill items from active catalog entries during normal restaurant operation while retaining validated manual entry only where an explicit development or recovery boundary requires it.
-7. Preserve each bill item's name and unit-price snapshot as financial truth, optionally retaining its catalog-item reference for traceability; later catalog changes must not rewrite an existing bill.
-8. Add staff bill operations for correction, quantity changes, and removal while the changes are still financially safe.
-9. Handle multiple quantities of identical products as explicit quantities/units suitable for later allocation.
-10. Decide and enforce what staff may change after allocations or successful payments exist; preserve completed payment history and prevent casual financial rewriting.
-11. Add audit-friendly timestamps and records where needed to explain operational state changes without building event sourcing.
+2. Move the growing staff workspace read model and derived totals behind a focused application query/projection service; avoid a generic repository abstraction that adds no behavioral boundary.
+3. Add restaurant-scoped `CatalogItem` records with a stable lowercase key, display name, exact TRY unit price, active state, and audit-friendly timestamps.
+4. Add an operator-controlled, schema-validated JSON import that targets one explicit restaurant and applies catalog changes atomically and idempotently. Reject duplicate keys; treat omitted entries as unchanged; require explicit deactivation or reactivation; and do not physically delete catalog items during normal V1 operation.
+5. Let Admin manage restaurant tables and their stable QR identities; let authorized restaurant users view operational table state.
+6. Define lifecycle rules for opening, identifying, and closing table/bill sessions, including history and the rule preventing ambiguous simultaneous active sessions for one table.
+7. Create new bill items from active catalog entries during normal restaurant operation while retaining validated manual entry only where an explicit development or recovery boundary requires it.
+8. Preserve each bill item's name and unit-price snapshot as financial truth, optionally retaining its catalog-item reference for traceability; later catalog changes must not rewrite an existing bill.
+9. Add staff bill operations for correction, quantity changes, and removal while the changes are still financially safe.
+10. Handle multiple quantities of identical products as explicit quantities/units suitable for later allocation.
+11. Decide and enforce what staff may change after allocations or successful payments exist; preserve completed payment history and prevent casual financial rewriting.
+12. Add audit-friendly timestamps and records where needed to explain operational state changes without building event sourcing.
 
 ### Engineering Concepts I Should Understand
 
