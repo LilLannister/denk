@@ -24,6 +24,7 @@
     "db:migrate:status": "prisma migrate status",
     "db:migrate:deploy": "prisma migrate deploy",
     "setup:dev": "tsx scripts/setup-development.ts",
+    "catalog:import": "tsx scripts/import-catalog.ts",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm test:e2e"
   },
   "dependencies": {

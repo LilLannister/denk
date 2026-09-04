@@ -1,0 +1,75 @@
+{
+  "schemaVersion": "1.0.0",
+  "categories": [
+    {
+      "key": "pizza",
+      "name": "Pizza",
+      "sortOrder": 10,
+      "items": [
+        {
+          "key": "margherita",
+          "name": "Margherita",
+          "unitPrice": "250.00",
+          "sortOrder": 10,
+          "active": true
+        },
+        {
+          "key": "pepperoni",
+          "name": "Pepperoni",
+          "unitPrice": "300.00",
+          "sortOrder": 20,
+          "active": true
+        }
+      ]
+    },
+    {
+      "key": "burgers",
+      "name": "Burgers",
+      "sortOrder": 20,
+      "items": [
+        {
+          "key": "cheeseburger",
+          "name": "Cheeseburger",
+          "unitPrice": "225.00",
+          "sortOrder": 10,
+          "active": true
+        },
+        {
+          "key": "smash-burger",
+          "name": "Smash Burger",
+          "unitPrice": "275.00",
+          "sortOrder": 20,
+          "active": true
+        }
+      ]
+    },
+    {
+      "key": "desserts",
+      "name": "Desserts",
+      "sortOrder": 30,
+      "items": [
+        {
+          "key": "cheesecake",
+          "name": "Cheesecake",
+          "unitPrice": "150.00",
+          "sortOrder": 10,
+          "active": true
+        }
+      ]
+    },
+    {
+      "key": "beverages",
+      "name": "Beverages",
+      "sortOrder": 40,
+      "items": [
+        {
+          "key": "tea",
+          "name": "Tea",
+          "unitPrice": "25.50",
+          "sortOrder": 10,
+          "active": true
+        }
+      ]
+    }
+  ]
+}
