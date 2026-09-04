@@ -2,8 +2,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
-import { addMinorUnits, formatTryAmount } from "@/lib/money";
-import { prisma } from "@/lib/prisma";
+import { formatTryAmount } from "@/lib/money";
+import { getStaffWorkspaceProjection } from "@/lib/staff-workspace";
 
 import { AddBillItemForm } from "./add-bill-item-form";
 import { OpenTableSessionForm } from "./open-table-session-form";
@@ -18,36 +18,7 @@ export default async function StaffPage() {
     redirect("/staff/sign-in");
   }
 
-  const memberships = await prisma.restaurantMembership.findMany({
-    where: {
-      userId: session.user.id,
-    },
-    include: {
-      restaurant: {
-        include: {
-          tables: {
-            include: {
-              currentSession: {
-                include: {
-                  billItems: {
-                    orderBy: {
-                      createdAt: "asc",
-                    },
-                  },
-                },
-              },
-            },
-            orderBy: {
-              name: "asc",
-            },
-          },
-        },
-      },
-    },
-    orderBy: {
-      createdAt: "asc",
-    },
-  });
+  const memberships = await getStaffWorkspaceProjection(session.user.id);
 
   if (memberships.length === 0) {
     return (
@@ -116,16 +87,7 @@ export default async function StaffPage() {
 
                       <p className="mt-3 font-medium">
                         Total:{" "}
-                        {formatTryAmount(
-                          table.currentSession.billItems.reduce(
-                            (total, item) =>
-                              addMinorUnits(
-                                total,
-                                item.quantity * item.unitPriceMinor,
-                              ),
-                            0,
-                          ),
-                        )}
+                        {formatTryAmount(table.currentSession.totalMinor)}
                       </p>
 
                       <AddBillItemForm restaurantTableId={table.id} />
