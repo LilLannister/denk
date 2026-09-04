@@ -12,6 +12,46 @@ export async function getStaffWorkspaceProjection(userId: string) {
       restaurant: {
         select: {
           name: true,
+          catalogCategories: {
+            where: {
+              items: {
+                some: {
+                  isActive: true,
+                },
+              },
+            },
+            select: {
+              key: true,
+              name: true,
+              items: {
+                where: {
+                  isActive: true,
+                },
+                select: {
+                  id: true,
+                  key: true,
+                  name: true,
+                  unitPriceMinor: true,
+                },
+                orderBy: [
+                  {
+                    sortOrder: "asc",
+                  },
+                  {
+                    key: "asc",
+                  },
+                ],
+              },
+            },
+            orderBy: [
+              {
+                sortOrder: "asc",
+              },
+              {
+                key: "asc",
+              },
+            ],
+          },
           tables: {
             select: {
               id: true,
@@ -50,6 +90,18 @@ export async function getStaffWorkspaceProjection(userId: string) {
     role: membership.role,
     restaurant: {
       name: membership.restaurant.name,
+      catalogCategories: membership.restaurant.catalogCategories.map(
+        (category) => ({
+          key: category.key,
+          name: category.name,
+          items: category.items.map((item) => ({
+            id: item.id,
+            key: item.key,
+            name: item.name,
+            unitPriceMinor: item.unitPriceMinor,
+          })),
+        }),
+      ),
       tables: membership.restaurant.tables.map((table) => {
         if (!table.currentSession) {
           return {
@@ -90,3 +142,6 @@ export async function getStaffWorkspaceProjection(userId: string) {
 export type StaffWorkspaceProjection = Awaited<
   ReturnType<typeof getStaffWorkspaceProjection>
 >;
+
+export type StaffCatalogCategory =
+  StaffWorkspaceProjection[number]["restaurant"]["catalogCategories"][number];

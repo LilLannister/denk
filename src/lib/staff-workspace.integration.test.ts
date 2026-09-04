@@ -152,6 +152,129 @@ describe("staff workspace projection", () => {
     });
   });
 
+  it("returns only active catalog items in deterministic category order", async () => {
+    const pizzaCategory = await prisma.catalogCategory.create({
+      data: {
+        restaurantId,
+        key: "pizza",
+        name: "Pizza",
+        sortOrder: 10,
+      },
+    });
+
+    const dessertCategory = await prisma.catalogCategory.create({
+      data: {
+        restaurantId,
+        key: "desserts",
+        name: "Desserts",
+        sortOrder: 30,
+      },
+    });
+
+    const hiddenCategory = await prisma.catalogCategory.create({
+      data: {
+        restaurantId,
+        key: "hidden",
+        name: "Hidden",
+        sortOrder: 20,
+      },
+    });
+
+    await prisma.catalogItem.createMany({
+      data: [
+        {
+          restaurantId,
+          categoryId: pizzaCategory.id,
+          key: "pepperoni",
+          name: "Pepperoni",
+          unitPriceMinor: 30_000,
+          isActive: true,
+          sortOrder: 20,
+        },
+        {
+          restaurantId,
+          categoryId: pizzaCategory.id,
+          key: "margherita",
+          name: "Margherita",
+          unitPriceMinor: 25_000,
+          isActive: true,
+          sortOrder: 10,
+        },
+        {
+          restaurantId,
+          categoryId: dessertCategory.id,
+          key: "cheesecake",
+          name: "Cheesecake",
+          unitPriceMinor: 15_000,
+          isActive: true,
+          sortOrder: 10,
+        },
+        {
+          restaurantId,
+          categoryId: dessertCategory.id,
+          key: "inactive-dessert",
+          name: "Inactive Dessert",
+          unitPriceMinor: 10_000,
+          isActive: false,
+          sortOrder: 5,
+        },
+        {
+          restaurantId,
+          categoryId: hiddenCategory.id,
+          key: "inactive-hidden-item",
+          name: "Inactive Hidden Item",
+          unitPriceMinor: 10_000,
+          isActive: false,
+          sortOrder: 10,
+        },
+      ],
+    });
+
+    const projection = await getStaffWorkspaceProjection(userId);
+
+    expect(projection[0].restaurant.catalogCategories).toMatchObject([
+      {
+        key: "pizza",
+        name: "Pizza",
+        items: [
+          {
+            key: "margherita",
+            name: "Margherita",
+            unitPriceMinor: 25_000,
+          },
+          {
+            key: "pepperoni",
+            name: "Pepperoni",
+            unitPriceMinor: 30_000,
+          },
+        ],
+      },
+      {
+        key: "desserts",
+        name: "Desserts",
+        items: [
+          {
+            key: "cheesecake",
+            name: "Cheesecake",
+            unitPriceMinor: 15_000,
+          },
+        ],
+      },
+    ]);
+
+    expect(
+      projection[0].restaurant.catalogCategories.some(
+        (category) => category.key === "hidden",
+      ),
+    ).toBe(false);
+
+    expect(
+      projection[0].restaurant.catalogCategories
+        .flatMap((category) => category.items)
+        .some((item) => item.key === "inactive-dessert"),
+    ).toBe(false);
+  });
+
   it("does not expose restaurants without a membership", async () => {
     const projection = await getStaffWorkspaceProjection(userId);
 

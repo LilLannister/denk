@@ -51,10 +51,9 @@ test("staff opens and populates a bill that an anonymous guest joins and views",
     expect(joinCode).not.toBeNull();
 
     await restaurantSection
-      .getByLabel("Item name")
-      .fill("E2E Shared Breakfast");
+      .getByLabel("Catalog item")
+      .selectOption({ label: "E2E Shared Breakfast — ₺125.50" });
     await restaurantSection.getByLabel("Quantity").fill("2");
-    await restaurantSection.getByLabel("Unit price (TRY)").fill("125.50");
     await restaurantSection.getByRole("button", { name: "Add item" }).click();
 
     await expect(restaurantSection.getByText("Bill item added.")).toBeVisible();
