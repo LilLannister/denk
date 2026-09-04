@@ -126,6 +126,18 @@ The first committed migration contains the Better Auth schema and the minimum DE
 
 `pnpm db:down` stops PostgreSQL but preserves its named data volume.
 
+## Catalog Import
+
+Restaurant catalogs are loaded through trusted operator tooling. Each import targets one existing restaurant explicitly and uses the versioned JSON format demonstrated in `examples/catalog.v1.json`.
+
+Run an import with:
+
+```bash
+pnpm catalog:import --restaurant-id <restaurant-id> --file examples/catalog.v1.json
+```
+
+Catalog prices are decimal strings representing Turkish lira. Category and item keys are stable, normalized lowercase identifiers. Display names and ordering may change, and every item belongs to exactly one category. The complete document is validated before any database writes occur, and valid imports are applied atomically so a failure cannot leave a partially imported catalog. Repeating an unchanged import is a no-op. Categories and items omitted from a later document remain unchanged. Activating or deactivating an item requires an explicit `active` value, and the importer never physically deletes omitted records.
+
 ## Verification
 
 Run individual checks:
