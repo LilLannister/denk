@@ -2,6 +2,7 @@ import { parseEnvironment } from "./env";
 import { digestJoinCode, generateJoinCode } from "./join-code";
 import { prisma } from "./prisma";
 import { requireRestaurantMembership } from "./staff-authorization";
+import { lockOpenTableSession } from "./open-table-session-lock";
 
 const JOIN_CODE_LIFETIME_MS = 15 * 60 * 1_000;
 
@@ -60,9 +61,10 @@ export async function openTableSession({
 
   await requireRestaurantMembership(userId, restaurantTable.restaurantId);
 
-  const existingSession = await prisma.tableSession.findUnique({
+  const existingSession = await prisma.tableSession.findFirst({
     where: {
       restaurantTableId,
+      closedAt: null,
     },
   });
 
@@ -114,12 +116,6 @@ export async function rotateTableSessionJoinCode({
     },
     select: {
       restaurantId: true,
-      currentSession: {
-        select: {
-          id: true,
-          joinCodeDigest: true,
-        },
-      },
     },
   });
 
@@ -129,32 +125,129 @@ export async function rotateTableSessionJoinCode({
 
   await requireRestaurantMembership(userId, restaurantTable.restaurantId);
 
-  if (!restaurantTable.currentSession) {
-    throw new TableSessionNotOpenError();
-  }
-
   const environment = parseEnvironment(process.env);
 
-  let joinCode = generateJoinCode();
-  let joinCodeDigest = digestJoinCode(joinCode, environment.BETTER_AUTH_SECRET);
+  return prisma.$transaction(async (transaction) => {
+    const currentSession = await lockOpenTableSession(
+      transaction,
+      restaurantTableId,
+    );
 
-  while (joinCodeDigest === restaurantTable.currentSession.joinCodeDigest) {
-    joinCode = generateJoinCode();
-    joinCodeDigest = digestJoinCode(joinCode, environment.BETTER_AUTH_SECRET);
-  }
+    if (!currentSession) {
+      throw new TableSessionNotOpenError();
+    }
 
-  const tableSession = await prisma.tableSession.update({
+    const existingSession = await transaction.tableSession.findUniqueOrThrow({
+      where: {
+        id: currentSession.id,
+      },
+      select: {
+        joinCodeDigest: true,
+      },
+    });
+
+    let joinCode = generateJoinCode();
+    let joinCodeDigest = digestJoinCode(
+      joinCode,
+      environment.BETTER_AUTH_SECRET,
+    );
+
+    while (joinCodeDigest === existingSession.joinCodeDigest) {
+      joinCode = generateJoinCode();
+      joinCodeDigest = digestJoinCode(joinCode, environment.BETTER_AUTH_SECRET);
+    }
+
+    const updateResult = await transaction.tableSession.updateMany({
+      where: {
+        id: currentSession.id,
+        closedAt: null,
+      },
+      data: {
+        joinCodeDigest,
+        joinCodeExpiresAt: new Date(now.getTime() + JOIN_CODE_LIFETIME_MS),
+      },
+    });
+
+    if (updateResult.count !== 1) {
+      throw new TableSessionNotOpenError();
+    }
+
+    const tableSession = await transaction.tableSession.findUniqueOrThrow({
+      where: {
+        id: currentSession.id,
+      },
+    });
+
+    return {
+      tableSession,
+      joinCode,
+    };
+  });
+}
+
+export async function closeTableSession({
+  userId,
+  restaurantTableId,
+  now = new Date(),
+}: {
+  userId: string;
+  restaurantTableId: string;
+  now?: Date;
+}) {
+  const restaurantTable = await prisma.restaurantTable.findUnique({
     where: {
-      id: restaurantTable.currentSession.id,
+      id: restaurantTableId,
     },
-    data: {
-      joinCodeDigest,
-      joinCodeExpiresAt: new Date(now.getTime() + JOIN_CODE_LIFETIME_MS),
+    select: {
+      restaurantId: true,
     },
   });
 
-  return {
-    tableSession,
-    joinCode,
-  };
+  if (!restaurantTable) {
+    throw new RestaurantTableNotFoundError();
+  }
+
+  await requireRestaurantMembership(userId, restaurantTable.restaurantId);
+
+  return prisma.$transaction(async (transaction) => {
+    const currentSession = await lockOpenTableSession(
+      transaction,
+      restaurantTableId,
+    );
+
+    if (!currentSession) {
+      throw new TableSessionNotOpenError();
+    }
+
+    const closeResult = await transaction.tableSession.updateMany({
+      where: {
+        id: currentSession.id,
+        closedAt: null,
+      },
+      data: {
+        closedAt: now,
+        joinCodeExpiresAt: now,
+      },
+    });
+
+    if (closeResult.count !== 1) {
+      throw new TableSessionNotOpenError();
+    }
+
+    await transaction.guestSession.updateMany({
+      where: {
+        tableSessionId: currentSession.id,
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: now,
+      },
+    });
+
+    return transaction.tableSession.findUniqueOrThrow({
+      where: {
+        id: currentSession.id,
+      },
+    });
+  });
 }

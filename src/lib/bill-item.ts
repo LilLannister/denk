@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { InvalidMoneyAmountError, addMinorUnits } from "./money";
+import { lockOpenTableSession } from "./open-table-session-lock";
 import { prisma } from "./prisma";
 import { requireRestaurantMembership } from "./staff-authorization";
 
@@ -59,17 +60,6 @@ export async function addBillItem(input: {
     },
     select: {
       restaurantId: true,
-      currentSession: {
-        select: {
-          id: true,
-          billItems: {
-            select: {
-              quantity: true,
-              unitPriceMinor: true,
-            },
-          },
-        },
-      },
     },
   });
 
@@ -82,57 +72,79 @@ export async function addBillItem(input: {
     restaurantTable.restaurantId,
   );
 
-  if (!restaurantTable.currentSession) {
-    throw new BillItemTableSessionNotOpenError();
-  }
-
-  const catalogItem = await prisma.catalogItem.findFirst({
-    where: {
-      id: parsedInput.data.catalogItemId,
-      restaurantId: restaurantTable.restaurantId,
-      isActive: true,
-    },
-    select: {
-      id: true,
-      name: true,
-      unitPriceMinor: true,
-    },
-  });
-
-  if (!catalogItem) {
-    throw new BillItemCatalogItemUnavailableError();
-  }
-
-  try {
-    const currentTotalMinor = restaurantTable.currentSession.billItems.reduce(
-      (total, item) =>
-        addMinorUnits(total, item.quantity * item.unitPriceMinor),
-      0,
+  return prisma.$transaction(async (transaction) => {
+    const openSession = await lockOpenTableSession(
+      transaction,
+      parsedInput.data.restaurantTableId,
     );
 
-    const newLineTotalMinor =
-      parsedInput.data.quantity * catalogItem.unitPriceMinor;
-
-    if (!Number.isSafeInteger(newLineTotalMinor)) {
-      throw new InvalidBillItemError();
+    if (!openSession) {
+      throw new BillItemTableSessionNotOpenError();
     }
 
-    addMinorUnits(currentTotalMinor, newLineTotalMinor);
-  } catch (error) {
-    if (error instanceof InvalidMoneyAmountError) {
-      throw new InvalidBillItemError();
+    const currentSession = await transaction.tableSession.findUniqueOrThrow({
+      where: {
+        id: openSession.id,
+      },
+      select: {
+        id: true,
+        billItems: {
+          select: {
+            quantity: true,
+            unitPriceMinor: true,
+          },
+        },
+      },
+    });
+
+    const catalogItem = await transaction.catalogItem.findFirst({
+      where: {
+        id: parsedInput.data.catalogItemId,
+        restaurantId: restaurantTable.restaurantId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        unitPriceMinor: true,
+      },
+    });
+
+    if (!catalogItem) {
+      throw new BillItemCatalogItemUnavailableError();
     }
 
-    throw error;
-  }
+    try {
+      const currentTotalMinor = currentSession.billItems.reduce(
+        (total, item) =>
+          addMinorUnits(total, item.quantity * item.unitPriceMinor),
+        0,
+      );
 
-  return prisma.billItem.create({
-    data: {
-      tableSessionId: restaurantTable.currentSession.id,
-      catalogItemId: catalogItem.id,
-      name: catalogItem.name,
-      quantity: parsedInput.data.quantity,
-      unitPriceMinor: catalogItem.unitPriceMinor,
-    },
+      const newLineTotalMinor =
+        parsedInput.data.quantity * catalogItem.unitPriceMinor;
+
+      if (!Number.isSafeInteger(newLineTotalMinor)) {
+        throw new InvalidBillItemError();
+      }
+
+      addMinorUnits(currentTotalMinor, newLineTotalMinor);
+    } catch (error) {
+      if (error instanceof InvalidMoneyAmountError) {
+        throw new InvalidBillItemError();
+      }
+
+      throw error;
+    }
+
+    return transaction.billItem.create({
+      data: {
+        tableSessionId: currentSession.id,
+        catalogItemId: catalogItem.id,
+        name: catalogItem.name,
+        quantity: parsedInput.data.quantity,
+        unitPriceMinor: catalogItem.unitPriceMinor,
+      },
+    });
   });
 }

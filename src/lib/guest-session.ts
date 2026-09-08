@@ -3,6 +3,7 @@ import { generateGuestToken, hashGuestToken } from "./guest-token";
 import { verifyJoinCode } from "./join-code";
 import { addMinorUnits } from "./money";
 import { prisma } from "./prisma";
+import { lockOpenTableSession } from "./open-table-session-lock";
 
 const GUEST_SESSION_LIFETIME_MS = 12 * 60 * 60 * 1_000;
 
@@ -26,46 +27,58 @@ export async function joinTableSession({
     where: {
       publicId: publicTableId,
     },
-    include: {
-      currentSession: true,
-    },
   });
 
-  const tableSession = restaurantTable?.currentSession;
-
-  if (!restaurantTable || !tableSession) {
+  if (!restaurantTable) {
     throw new GuestJoinDeniedError();
   }
 
   const environment = parseEnvironment(process.env);
 
-  const codeIsValid =
-    tableSession.joinCodeExpiresAt > now &&
-    verifyJoinCode(
-      joinCode,
-      tableSession.joinCodeDigest,
-      environment.BETTER_AUTH_SECRET,
+  return prisma.$transaction(async (transaction) => {
+    const openSession = await lockOpenTableSession(
+      transaction,
+      restaurantTable.id,
     );
 
-  if (!codeIsValid) {
-    throw new GuestJoinDeniedError();
-  }
+    if (!openSession) {
+      throw new GuestJoinDeniedError();
+    }
 
-  const token = generateGuestToken();
+    const tableSession = await transaction.tableSession.findUniqueOrThrow({
+      where: {
+        id: openSession.id,
+      },
+    });
 
-  const guestSession = await prisma.guestSession.create({
-    data: {
-      tableSessionId: tableSession.id,
-      tokenHash: hashGuestToken(token),
-      expiresAt: new Date(now.getTime() + GUEST_SESSION_LIFETIME_MS),
-    },
+    const codeIsValid =
+      tableSession.joinCodeExpiresAt > now &&
+      verifyJoinCode(
+        joinCode,
+        tableSession.joinCodeDigest,
+        environment.BETTER_AUTH_SECRET,
+      );
+
+    if (!codeIsValid) {
+      throw new GuestJoinDeniedError();
+    }
+
+    const token = generateGuestToken();
+
+    const guestSession = await transaction.guestSession.create({
+      data: {
+        tableSessionId: tableSession.id,
+        tokenHash: hashGuestToken(token),
+        expiresAt: new Date(now.getTime() + GUEST_SESSION_LIFETIME_MS),
+      },
+    });
+
+    return {
+      token,
+      guestSession,
+      restaurantTable,
+    };
   });
-
-  return {
-    token,
-    guestSession,
-    restaurantTable,
-  };
 }
 
 export async function getGuestBillProjection({
@@ -86,6 +99,7 @@ export async function getGuestBillProjection({
       expiresAt: true,
       tableSession: {
         select: {
+          closedAt: true,
           restaurantTable: {
             select: {
               publicId: true,
@@ -111,6 +125,7 @@ export async function getGuestBillProjection({
     !guestSession ||
     guestSession.revokedAt ||
     guestSession.expiresAt <= now ||
+    guestSession.tableSession.closedAt ||
     guestSession.tableSession.restaurantTable.publicId !== publicTableId
   ) {
     return null;

@@ -57,7 +57,10 @@ export async function getStaffWorkspaceProjection(userId: string) {
               id: true,
               name: true,
               publicId: true,
-              currentSession: {
+              tableSessions: {
+                where: {
+                  closedAt: null,
+                },
                 select: {
                   billItems: {
                     select: {
@@ -71,6 +74,7 @@ export async function getStaffWorkspaceProjection(userId: string) {
                     },
                   },
                 },
+                take: 1,
               },
             },
             orderBy: {
@@ -103,7 +107,9 @@ export async function getStaffWorkspaceProjection(userId: string) {
         }),
       ),
       tables: membership.restaurant.tables.map((table) => {
-        if (!table.currentSession) {
+        const currentSession = table.tableSessions[0];
+
+        if (!currentSession) {
           return {
             id: table.id,
             name: table.name,
@@ -112,7 +118,7 @@ export async function getStaffWorkspaceProjection(userId: string) {
           };
         }
 
-        const billItems = table.currentSession.billItems.map((item) => ({
+        const billItems = currentSession.billItems.map((item) => ({
           id: item.id,
           name: item.name,
           quantity: item.quantity,

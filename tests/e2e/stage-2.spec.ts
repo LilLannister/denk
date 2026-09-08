@@ -94,6 +94,68 @@ test("staff opens and populates a bill that an anonymous guest joins and views",
     expect(
       staffCookies.some((cookie) => cookie.name === GUEST_SESSION_COOKIE_NAME),
     ).toBe(false);
+    staffPage.once("dialog", async (dialog) => {
+      expect(dialog.message()).toBe(
+        "Close this bill? Guests will immediately lose access.",
+      );
+
+      await dialog.accept();
+    });
+
+    await restaurantSection.getByRole("button", { name: "Close bill" }).click();
+
+    await expect(
+      restaurantSection.getByText("Table session closed."),
+    ).toBeVisible();
+
+    await expect(
+      restaurantSection.getByRole("button", { name: "Open bill" }),
+    ).toBeVisible();
+
+    await guestPage.reload();
+
+    await expect(
+      guestPage.getByRole("heading", { name: "Join table" }),
+    ).toBeVisible();
+
+    await expect(
+      guestPage.getByText(
+        "Your guest access has expired or is unavailable. Enter the current code to join again.",
+      ),
+    ).toBeVisible();
+
+    await restaurantSection.getByRole("button", { name: "Open bill" }).click();
+
+    const reopenedJoinCodeElement = restaurantSection.getByText(
+      /^[0-9A-HJKMNP-TV-Z]{8}$/,
+    );
+
+    await expect(reopenedJoinCodeElement).toBeVisible();
+
+    const reopenedJoinCode = await reopenedJoinCodeElement.textContent();
+
+    expect(reopenedJoinCode).not.toBeNull();
+    expect(reopenedJoinCode).not.toBe(joinCode);
+
+    await expect(
+      restaurantSection.getByText("No bill items yet."),
+    ).toBeVisible();
+
+    await guestPage
+      .getByLabel("Eight-character join code")
+      .fill(reopenedJoinCode!.toLowerCase());
+
+    await guestPage.getByRole("button", { name: "Join table" }).click();
+
+    await expect(
+      guestPage.getByRole("heading", {
+        name: stage2Fixture.tableName,
+      }),
+    ).toBeVisible();
+
+    await expect(guestPage.getByText("No bill items yet.")).toBeVisible();
+
+    await expect(guestPage.getByText("Total: ₺0.00")).toBeVisible();
   } finally {
     await staffContext.close();
     await guestContext.close();

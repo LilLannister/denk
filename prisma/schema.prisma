@@ -143,14 +143,14 @@ model CatalogItem {
 }
 
 model RestaurantTable {
-  id             String        @id @default(cuid())
-  publicId       String        @unique @default(cuid())
-  name           String
-  restaurantId   String
-  restaurant     Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  currentSession TableSession?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id            String         @id @default(cuid())
+  publicId      String         @unique @default(cuid())
+  name          String
+  restaurantId  String
+  restaurant    Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  tableSessions TableSession[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   @@unique([restaurantId, name])
   @@map("restaurant_table")
@@ -158,15 +158,17 @@ model RestaurantTable {
 
 model TableSession {
   id                String          @id @default(cuid())
-  restaurantTableId String          @unique
+  restaurantTableId String
   restaurantTable   RestaurantTable @relation(fields: [restaurantTableId], references: [id], onDelete: Cascade)
   joinCodeDigest    String
   joinCodeExpiresAt DateTime
+  closedAt          DateTime?
   billItems         BillItem[]
   guestSessions     GuestSession[]
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
+  @@index([restaurantTableId, createdAt])
   @@map("table_session")
 }
 
