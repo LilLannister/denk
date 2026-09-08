@@ -71,18 +71,54 @@ afterAll(async () => {
 });
 
 describe("staff restaurant authorization", () => {
-  it("allows a member to access their restaurant", async () => {
-    const membership = await requireRestaurantMembership(userId, restaurantId);
+  it.each(["STAFF", "ADMIN"] as const)(
+    "allows %s to perform restaurant operations",
+    async (role) => {
+      await prisma.restaurantMembership.update({
+        where: {
+          restaurantId_userId: {
+            userId,
+            restaurantId,
+          },
+        },
+        data: {
+          role,
+        },
+      });
 
-    expect(membership.restaurantId).toBe(restaurantId);
-    expect(membership.userId).toBe(userId);
-  });
+      const membership = await requireRestaurantMembership(
+        userId,
+        restaurantId,
+      );
 
-  it("rejects access to another restaurant", async () => {
-    await expect(
-      requireRestaurantMembership(userId, otherRestaurantId),
-    ).rejects.toBeInstanceOf(RestaurantAccessDeniedError);
-  });
+      expect(membership).toMatchObject({
+        restaurantId,
+        userId,
+        role,
+      });
+    },
+  );
+
+  it.each(["STAFF", "ADMIN"] as const)(
+    "rejects %s access to another restaurant",
+    async (role) => {
+      await prisma.restaurantMembership.update({
+        where: {
+          restaurantId_userId: {
+            userId,
+            restaurantId,
+          },
+        },
+        data: {
+          role,
+        },
+      });
+
+      await expect(
+        requireRestaurantMembership(userId, otherRestaurantId),
+      ).rejects.toBeInstanceOf(RestaurantAccessDeniedError);
+    },
+  );
 
   it("rejects STAFF from an ADMIN operation", async () => {
     await expect(

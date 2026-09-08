@@ -188,7 +188,7 @@ Turn the first slice into a safe restaurant workflow for managing a controlled p
 
 ### What I Will Implement
 
-1. Finalize application-level `ADMIN` and `STAFF` capability boundaries and central restaurant/resource ownership checks for Stage 3 operations.
+1. Enforce the finalized V1 capability matrix: both `ADMIN` and `STAFF` may view and operate existing table sessions and bills, while only `ADMIN` may create, rename, or deactivate restaurant tables. Resolve every capability from server-side restaurant membership and resource ownership checks.
 2. Move the growing staff workspace read model and derived totals behind a focused application query/projection service; avoid a generic repository abstraction that adds no behavioral boundary.
 3. Add restaurant-scoped `CatalogItem` records with a stable lowercase key, display name, exact TRY unit price, active state, and audit-friendly timestamps.
 4. Add an operator-controlled, schema-validated JSON import that targets one explicit restaurant and applies catalog changes atomically and idempotently. Reject duplicate keys; treat omitted entries as unchanged; require explicit deactivation or reactivation; and do not physically delete catalog items during normal V1 operation.
@@ -213,7 +213,7 @@ Turn the first slice into a safe restaurant workflow for managing a controlled p
 
 ### Key Tests / Verification
 
-- Admin and Staff capabilities match the finalized role boundaries.
+- Admin and Staff can perform existing-table session and bill operations; only Admin can create, rename, or deactivate tables.
 - Cross-restaurant reads and mutations fail even when valid resource IDs are supplied directly.
 - Repeating the same valid catalog import produces the same state; invalid or duplicate input leaves the catalog unchanged.
 - Catalog imports cannot affect another restaurant, omission does not deactivate an item, and explicit deactivate/reactivate operations behave predictably.
