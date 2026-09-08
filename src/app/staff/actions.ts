@@ -10,8 +10,9 @@ import { RestaurantAccessDeniedError } from "@/lib/staff-authorization";
 import {
   RestaurantTableNotFoundError,
   TableSessionAlreadyOpenError,
-  openTableSession,
   TableSessionNotOpenError,
+  closeTableSession,
+  openTableSession,
   rotateTableSessionJoinCode,
 } from "@/lib/table-session";
 
@@ -153,6 +154,69 @@ export async function rotateTableSessionJoinCodeAction(
     return {
       status: "error",
       message: "A new join code could not be generated.",
+    };
+  }
+}
+
+export async function closeTableSessionAction(
+  _previousState: OpenTableSessionState,
+  formData: FormData,
+): Promise<OpenTableSessionState> {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!session) {
+    redirect("/staff/sign-in");
+  }
+
+  const parsedTableId = z
+    .string()
+    .min(1)
+    .safeParse(formData.get("restaurantTableId"));
+
+  if (!parsedTableId.success) {
+    return {
+      status: "error",
+      message: "Invalid table.",
+    };
+  }
+
+  try {
+    await closeTableSession({
+      userId: session.user.id,
+      restaurantTableId: parsedTableId.data,
+    });
+
+    revalidatePath("/staff");
+
+    return {
+      status: "success",
+      message: "Table session closed.",
+    };
+  } catch (error) {
+    if (error instanceof TableSessionNotOpenError) {
+      return {
+        status: "error",
+        message: "This table does not have an open session.",
+      };
+    }
+
+    if (
+      error instanceof RestaurantAccessDeniedError ||
+      error instanceof RestaurantTableNotFoundError
+    ) {
+      return {
+        status: "error",
+        message: "You cannot close this table session.",
+      };
+    }
+
+    console.error("Failed to close table session", error);
+
+    return {
+      status: "error",
+      message: "The table session could not be closed.",
     };
   }
 }

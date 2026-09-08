@@ -193,7 +193,7 @@ Turn the first slice into a safe restaurant workflow for managing a controlled p
 3. Add restaurant-scoped `CatalogItem` records with a stable lowercase key, display name, exact TRY unit price, active state, and audit-friendly timestamps.
 4. Add an operator-controlled, schema-validated JSON import that targets one explicit restaurant and applies catalog changes atomically and idempotently. Reject duplicate keys; treat omitted entries as unchanged; require explicit deactivation or reactivation; and do not physically delete catalog items during normal V1 operation.
 5. Let Admin manage restaurant tables and their stable QR identities; let authorized restaurant users view operational table state.
-6. Define lifecycle rules for opening, identifying, and closing table/bill sessions, including history and the rule preventing ambiguous simultaneous active sessions for one table.
+6. Preserve table-session history with a terminal close timestamp, allow reopening only by creating a new session, revoke guest access on close, and enforce at most one open session per table with a PostgreSQL partial unique index.
 7. Create new bill items from active catalog entries during normal restaurant operation while retaining validated manual entry only where an explicit development or recovery boundary requires it.
 8. Preserve each bill item's name and unit-price snapshot as financial truth, optionally retaining its catalog-item reference for traceability; later catalog changes must not rewrite an existing bill.
 9. Add staff bill operations for correction, quantity changes, and removal while the changes are still financially safe.
@@ -218,7 +218,8 @@ Turn the first slice into a safe restaurant workflow for managing a controlled p
 - Repeating the same valid catalog import produces the same state; invalid or duplicate input leaves the catalog unchanged.
 - Catalog imports cannot affect another restaurant, omission does not deactivate an item, and explicit deactivate/reactivate operations behave predictably.
 - Existing bill-item names and prices do not change when their catalog entry is edited or deactivated.
-- Two active sessions cannot be opened for the same table if the lifecycle forbids it.
+- Closing preserves the session and bill history, invalidates its join and guest credentials, and reopening creates a distinct session.
+- Concurrent attempts cannot leave more than one open session for a table; PostgreSQL enforces the invariant independently of application timing.
 - Invalid prices, quantities, and state transitions are rejected server-side.
 - Corrections before allocation work; unsafe corrections after allocation/payment are blocked or handled by the explicit rule.
 - A completed payment record cannot be edited or erased through normal bill-management operations.

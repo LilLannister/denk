@@ -320,4 +320,60 @@ describe("guest table-session joining", () => {
 
     expect(access).toBeNull();
   });
+
+  it("rejects joining a closed table session", async () => {
+    const closedAt = new Date("2026-09-03T12:00:00.000Z");
+
+    await prisma.tableSession.update({
+      where: {
+        id: tableSessionId,
+      },
+      data: {
+        closedAt,
+      },
+    });
+
+    await expect(
+      joinTableSession({
+        publicTableId,
+        joinCode,
+        now: closedAt,
+      }),
+    ).rejects.toBeInstanceOf(GuestJoinDeniedError);
+
+    await expect(
+      prisma.guestSession.count({
+        where: {
+          tableSessionId,
+        },
+      }),
+    ).resolves.toBe(0);
+  });
+
+  it("rejects an otherwise-valid guest token after its table session closes", async () => {
+    const joinedAt = new Date("2026-09-03T12:00:00.000Z");
+
+    const joined = await joinTableSession({
+      publicTableId,
+      joinCode,
+      now: joinedAt,
+    });
+
+    await prisma.tableSession.update({
+      where: {
+        id: tableSessionId,
+      },
+      data: {
+        closedAt: new Date("2026-09-03T12:05:00.000Z"),
+      },
+    });
+
+    const bill = await getGuestBillProjection({
+      publicTableId,
+      token: joined.token,
+      now: new Date("2026-09-03T12:06:00.000Z"),
+    });
+
+    expect(bill).toBeNull();
+  });
 });

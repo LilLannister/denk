@@ -116,6 +116,14 @@ This document records the technology and architecture decisions that are settled
 
 ## Shared Bill Updates and Correctness
 
+### Table-session lifecycle and history
+
+**Decision:** A restaurant table may have many historical `TableSession` records but at most one open session. An open session has `closedAt = null`; closing sets `closedAt` once and never deletes or reopens that record. PostgreSQL enforces the single-open-session invariant with a partial unique index on `restaurantTableId` where `closedAt IS NULL`. Reopening a table always creates a new session. Closing also expires the join code immediately and revokes every still-active guest session attached to that table session.
+
+**Reason:** Session deletion would erase bill and guest history through cascading relations, while an application-only “current session” check is vulnerable to concurrent opens. A terminal close timestamp preserves an explainable history and lets the database reject ambiguous active state regardless of UI timing.
+
+**Accepted trade-off:** Prisma cannot express the partial unique index directly, so the invariant is documented in and enforced by the reviewed SQL migration. Application queries must explicitly select the open session instead of relying on a one-to-one relation. Displaying historical sessions is separate from preserving them, and later allocation/payment work may add reasons that prevent closure; closed financial records will not be silently rewritten.
+
 ### Controlled polling
 
 **Decision:** Poll approximately every two seconds only while a shared bill view is active, and refresh immediately after relevant mutations.

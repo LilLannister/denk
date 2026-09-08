@@ -31,7 +31,7 @@ beforeEach(async () => {
       tables: {
         create: {
           name: `Table ${suffix}`,
-          currentSession: {
+          tableSessions: {
             create: {
               joinCodeDigest: `bill-item-digest-${suffix}`,
               joinCodeExpiresAt: new Date(Date.now() + 60_000),
@@ -257,6 +257,45 @@ describe("adding bill items", () => {
       }),
     ).rejects.toThrow(InvalidBillItemError);
     expect(await countBillItems()).toBe(1);
+  });
+
+  it("allows only one of two additions that would jointly make the bill total unsafe", async () => {
+    const results = await Promise.allSettled([
+      addBillItem({
+        userId,
+        restaurantTableId,
+        catalogItemId: largeCatalogItemId,
+        quantity: 2_000_000_000,
+      }),
+      addBillItem({
+        userId,
+        restaurantTableId,
+        catalogItemId: largeCatalogItemId,
+        quantity: 2_000_000_000,
+      }),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+
+    const rejected = results.filter((result) => result.status === "rejected");
+
+    expect(rejected).toHaveLength(1);
+
+    if (rejected[0]?.status === "rejected") {
+      expect(rejected[0].reason).toBeInstanceOf(InvalidBillItemError);
+    }
+
+    await expect(
+      prisma.billItem.count({
+        where: {
+          tableSession: {
+            restaurantTableId,
+          },
+        },
+      }),
+    ).resolves.toBe(1);
   });
 
   it.each([

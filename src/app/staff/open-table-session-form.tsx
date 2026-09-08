@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 
 import {
+  closeTableSessionAction,
   openTableSessionAction,
   rotateTableSessionJoinCodeAction,
 } from "./actions";
@@ -43,18 +44,25 @@ export function OpenTableSessionForm({
     initialState,
   );
 
-  if (openState.status === "success") {
-    return <JoinCodeResult state={openState} />;
-  }
-
-  if (rotateState.status === "success") {
-    return <JoinCodeResult state={rotateState} />;
-  }
+  const [closeState, closeAction, isClosing] = useActionState(
+    closeTableSessionAction,
+    initialState,
+  );
 
   if (hasOpenSession) {
     return (
       <div className="mt-2">
-        <p className="text-sm text-gray-600">Session open</p>
+        {openState.status === "success" ? (
+          <JoinCodeResult state={openState} />
+        ) : null}
+
+        {rotateState.status === "success" ? (
+          <JoinCodeResult state={rotateState} />
+        ) : null}
+
+        {openState.status !== "success" && rotateState.status !== "success" ? (
+          <p className="text-sm text-gray-600">Session open</p>
+        ) : null}
 
         <form action={rotateAction} className="mt-2">
           <input
@@ -77,27 +85,72 @@ export function OpenTableSessionForm({
             </p>
           ) : null}
         </form>
+        <form
+          action={closeAction}
+          className="mt-2"
+          onSubmit={(event) => {
+            if (
+              !window.confirm(
+                "Close this bill? Guests will immediately lose access.",
+              )
+            ) {
+              event.preventDefault();
+            }
+          }}
+        >
+          <input
+            name="restaurantTableId"
+            type="hidden"
+            value={restaurantTableId}
+          />
+
+          <button
+            className="rounded border border-red-700 px-3 py-2 text-sm text-red-700 disabled:opacity-50"
+            type="submit"
+            disabled={isClosing}
+          >
+            {isClosing ? "Closing…" : "Close bill"}
+          </button>
+
+          {closeState.status === "error" ? (
+            <p className="mt-2 text-sm text-red-700" role="alert">
+              {closeState.message}
+            </p>
+          ) : null}
+        </form>
       </div>
     );
   }
 
   return (
-    <form action={openAction} className="mt-2">
-      <input name="restaurantTableId" type="hidden" value={restaurantTableId} />
-
-      <button
-        className="rounded border px-3 py-2 text-sm disabled:opacity-50"
-        type="submit"
-        disabled={isOpening}
-      >
-        {isOpening ? "Opening…" : "Open bill"}
-      </button>
-
-      {openState.status === "error" ? (
-        <p className="mt-2 text-sm text-red-700" role="alert">
-          {openState.message}
+    <div className="mt-2">
+      {closeState.status === "success" ? (
+        <p className="mb-2 text-sm text-green-700" role="status">
+          {closeState.message}
         </p>
       ) : null}
-    </form>
+
+      <form action={openAction}>
+        <input
+          name="restaurantTableId"
+          type="hidden"
+          value={restaurantTableId}
+        />
+
+        <button
+          className="rounded border px-3 py-2 text-sm disabled:opacity-50"
+          type="submit"
+          disabled={isOpening}
+        >
+          {isOpening ? "Opening…" : "Open bill"}
+        </button>
+
+        {openState.status === "error" ? (
+          <p className="mt-2 text-sm text-red-700" role="alert">
+            {openState.message}
+          </p>
+        ) : null}
+      </form>
+    </div>
   );
 }
