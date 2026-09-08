@@ -4,10 +4,13 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   BillItemCatalogItemUnavailableError,
+  BillItemNotFoundError,
   BillItemTableNotFoundError,
   BillItemTableSessionNotOpenError,
   InvalidBillItemError,
   addBillItem,
+  removeBillItem,
+  updateBillItemQuantity,
 } from "./bill-item";
 import { prisma } from "./prisma";
 import { RestaurantAccessDeniedError } from "./staff-authorization";
@@ -324,5 +327,283 @@ describe("adding bill items", () => {
         quantity: 2_147_483_647,
       }),
     ).rejects.toThrow(InvalidBillItemError);
+  });
+});
+
+describe("updating bill item quantities", () => {
+  it("updates only the quantity of an item in the open session", async () => {
+    const billItem = await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId,
+      quantity: 2,
+    });
+
+    const updatedBillItem = await updateBillItemQuantity({
+      userId,
+      restaurantTableId,
+      billItemId: billItem.id,
+      quantity: 4,
+    });
+
+    expect(updatedBillItem).toMatchObject({
+      id: billItem.id,
+      catalogItemId,
+      name: "Shared breakfast",
+      quantity: 4,
+      unitPriceMinor: 12_550,
+    });
+  });
+
+  it.each([0, -1, 1.5, 2_147_483_648])(
+    "rejects invalid updated quantity %s",
+    async (quantity) => {
+      const billItem = await addBillItem({
+        userId,
+        restaurantTableId,
+        catalogItemId,
+        quantity: 2,
+      });
+
+      await expect(
+        updateBillItemQuantity({
+          userId,
+          restaurantTableId,
+          billItemId: billItem.id,
+          quantity,
+        }),
+      ).rejects.toThrow(InvalidBillItemError);
+
+      await expect(
+        prisma.billItem.findUniqueOrThrow({
+          where: { id: billItem.id },
+        }),
+      ).resolves.toMatchObject({
+        quantity: 2,
+      });
+    },
+  );
+
+  it("rejects staff who are not assigned to the restaurant", async () => {
+    const billItem = await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId,
+      quantity: 2,
+    });
+
+    await expect(
+      updateBillItemQuantity({
+        userId: otherUserId,
+        restaurantTableId,
+        billItemId: billItem.id,
+        quantity: 3,
+      }),
+    ).rejects.toThrow(RestaurantAccessDeniedError);
+
+    await expect(
+      prisma.billItem.findUniqueOrThrow({
+        where: { id: billItem.id },
+      }),
+    ).resolves.toMatchObject({
+      quantity: 2,
+    });
+  });
+
+  it("rejects a bill item outside the table's open session", async () => {
+    const billItem = await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId,
+      quantity: 2,
+    });
+
+    await expect(
+      updateBillItemQuantity({
+        userId,
+        restaurantTableId,
+        billItemId: randomUUID(),
+        quantity: 3,
+      }),
+    ).rejects.toThrow(BillItemNotFoundError);
+
+    await expect(
+      prisma.billItem.findUniqueOrThrow({
+        where: { id: billItem.id },
+      }),
+    ).resolves.toMatchObject({
+      quantity: 2,
+    });
+  });
+
+  it("rejects correction after the table session closes", async () => {
+    const billItem = await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId,
+      quantity: 2,
+    });
+
+    await prisma.tableSession.updateMany({
+      where: {
+        restaurantTableId,
+        closedAt: null,
+      },
+      data: {
+        closedAt: new Date(),
+      },
+    });
+
+    await expect(
+      updateBillItemQuantity({
+        userId,
+        restaurantTableId,
+        billItemId: billItem.id,
+        quantity: 3,
+      }),
+    ).rejects.toThrow(BillItemTableSessionNotOpenError);
+
+    await expect(
+      prisma.billItem.findUniqueOrThrow({
+        where: { id: billItem.id },
+      }),
+    ).resolves.toMatchObject({
+      quantity: 2,
+    });
+  });
+
+  it("rejects an update that would make the complete bill total unsafe", async () => {
+    await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId: largeCatalogItemId,
+      quantity: 2_000_000_000,
+    });
+
+    const billItem = await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId: maximumPriceCatalogItemId,
+      quantity: 1,
+    });
+
+    await expect(
+      updateBillItemQuantity({
+        userId,
+        restaurantTableId,
+        billItemId: billItem.id,
+        quantity: 500_000,
+      }),
+    ).rejects.toThrow(InvalidBillItemError);
+
+    await expect(
+      prisma.billItem.findUniqueOrThrow({
+        where: { id: billItem.id },
+      }),
+    ).resolves.toMatchObject({
+      quantity: 1,
+    });
+  });
+});
+
+describe("removing bill items", () => {
+  it("removes an item from the open session", async () => {
+    const billItem = await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId,
+      quantity: 2,
+    });
+
+    await removeBillItem({
+      userId,
+      restaurantTableId,
+      billItemId: billItem.id,
+    });
+
+    await expect(
+      prisma.billItem.findUnique({
+        where: { id: billItem.id },
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("rejects staff who are not assigned to the restaurant", async () => {
+    const billItem = await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId,
+      quantity: 2,
+    });
+
+    await expect(
+      removeBillItem({
+        userId: otherUserId,
+        restaurantTableId,
+        billItemId: billItem.id,
+      }),
+    ).rejects.toThrow(RestaurantAccessDeniedError);
+
+    await expect(
+      prisma.billItem.findUnique({
+        where: { id: billItem.id },
+      }),
+    ).resolves.not.toBeNull();
+  });
+
+  it("rejects a bill item outside the table's open session", async () => {
+    const billItem = await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId,
+      quantity: 2,
+    });
+
+    await expect(
+      removeBillItem({
+        userId,
+        restaurantTableId,
+        billItemId: randomUUID(),
+      }),
+    ).rejects.toThrow(BillItemNotFoundError);
+
+    await expect(
+      prisma.billItem.findUnique({
+        where: { id: billItem.id },
+      }),
+    ).resolves.not.toBeNull();
+  });
+
+  it("rejects removal after the table session closes", async () => {
+    const billItem = await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId,
+      quantity: 2,
+    });
+
+    await prisma.tableSession.updateMany({
+      where: {
+        restaurantTableId,
+        closedAt: null,
+      },
+      data: {
+        closedAt: new Date(),
+      },
+    });
+
+    await expect(
+      removeBillItem({
+        userId,
+        restaurantTableId,
+        billItemId: billItem.id,
+      }),
+    ).rejects.toThrow(BillItemTableSessionNotOpenError);
+
+    await expect(
+      prisma.billItem.findUnique({
+        where: { id: billItem.id },
+      }),
+    ).resolves.not.toBeNull();
   });
 });

@@ -18,10 +18,13 @@ import {
 
 import {
   BillItemCatalogItemUnavailableError,
+  BillItemNotFoundError,
   BillItemTableNotFoundError,
   BillItemTableSessionNotOpenError,
   InvalidBillItemError,
   addBillItem,
+  removeBillItem,
+  updateBillItemQuantity,
 } from "@/lib/bill-item";
 
 export type OpenTableSessionState = {
@@ -232,6 +235,22 @@ const addBillItemFormSchema = z.object({
   quantity: z.coerce.number().int().positive(),
 });
 
+export type BillItemCorrectionState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+};
+
+const updateBillItemQuantityFormSchema = z.object({
+  restaurantTableId: z.string().min(1),
+  billItemId: z.string().min(1),
+  quantity: z.coerce.number().int().positive().max(2_147_483_647),
+});
+
+const removeBillItemFormSchema = z.object({
+  restaurantTableId: z.string().min(1),
+  billItemId: z.string().min(1),
+});
+
 export async function addBillItemAction(
   _previousState: AddBillItemState,
   formData: FormData,
@@ -308,6 +327,157 @@ export async function addBillItemAction(
     return {
       status: "error",
       message: "The bill item could not be added.",
+    };
+  }
+}
+
+export async function updateBillItemQuantityAction(
+  _previousState: BillItemCorrectionState,
+  formData: FormData,
+): Promise<BillItemCorrectionState> {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!session) {
+    redirect("/staff/sign-in");
+  }
+
+  const parsedForm = updateBillItemQuantityFormSchema.safeParse({
+    restaurantTableId: formData.get("restaurantTableId"),
+    billItemId: formData.get("billItemId"),
+    quantity: formData.get("quantity"),
+  });
+
+  if (!parsedForm.success) {
+    return {
+      status: "error",
+      message: "Enter a valid positive quantity.",
+    };
+  }
+
+  try {
+    await updateBillItemQuantity({
+      userId: session.user.id,
+      restaurantTableId: parsedForm.data.restaurantTableId,
+      billItemId: parsedForm.data.billItemId,
+      quantity: parsedForm.data.quantity,
+    });
+
+    revalidatePath("/staff");
+
+    return {
+      status: "success",
+      message: "Bill item quantity updated.",
+    };
+  } catch (error) {
+    if (error instanceof InvalidBillItemError) {
+      return {
+        status: "error",
+        message: "Enter a valid quantity that keeps the bill total safe.",
+      };
+    }
+
+    if (error instanceof BillItemNotFoundError) {
+      return {
+        status: "error",
+        message: "This bill item is no longer available.",
+      };
+    }
+
+    if (error instanceof BillItemTableSessionNotOpenError) {
+      return {
+        status: "error",
+        message: "This table does not have an open session.",
+      };
+    }
+
+    if (
+      error instanceof RestaurantAccessDeniedError ||
+      error instanceof BillItemTableNotFoundError
+    ) {
+      return {
+        status: "error",
+        message: "You cannot update items for this table.",
+      };
+    }
+
+    console.error("Failed to update bill item quantity", error);
+
+    return {
+      status: "error",
+      message: "The bill item quantity could not be updated.",
+    };
+  }
+}
+
+export async function removeBillItemAction(
+  _previousState: BillItemCorrectionState,
+  formData: FormData,
+): Promise<BillItemCorrectionState> {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!session) {
+    redirect("/staff/sign-in");
+  }
+
+  const parsedForm = removeBillItemFormSchema.safeParse({
+    restaurantTableId: formData.get("restaurantTableId"),
+    billItemId: formData.get("billItemId"),
+  });
+
+  if (!parsedForm.success) {
+    return {
+      status: "error",
+      message: "Invalid bill item.",
+    };
+  }
+
+  try {
+    await removeBillItem({
+      userId: session.user.id,
+      restaurantTableId: parsedForm.data.restaurantTableId,
+      billItemId: parsedForm.data.billItemId,
+    });
+
+    revalidatePath("/staff");
+
+    return {
+      status: "success",
+      message: "Bill item removed.",
+    };
+  } catch (error) {
+    if (error instanceof BillItemNotFoundError) {
+      return {
+        status: "error",
+        message: "This bill item is no longer available.",
+      };
+    }
+
+    if (error instanceof BillItemTableSessionNotOpenError) {
+      return {
+        status: "error",
+        message: "This table does not have an open session.",
+      };
+    }
+
+    if (
+      error instanceof RestaurantAccessDeniedError ||
+      error instanceof BillItemTableNotFoundError
+    ) {
+      return {
+        status: "error",
+        message: "You cannot remove items from this table.",
+      };
+    }
+
+    console.error("Failed to remove bill item", error);
+
+    return {
+      status: "error",
+      message: "The bill item could not be removed.",
     };
   }
 }

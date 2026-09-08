@@ -124,6 +124,14 @@ This document records the technology and architecture decisions that are settled
 
 **Accepted trade-off:** Prisma cannot express the partial unique index directly, so the invariant is documented in and enforced by the reviewed SQL migration. Application queries must explicitly select the open session instead of relying on a one-to-one relation. Displaying historical sessions is separate from preserving them, and later allocation/payment work may add reasons that prevent closure; closed financial records will not be silently rewritten.
 
+### Bill-item correction boundary
+
+**Decision:** Staff may change the positive integer quantity of a bill item or explicitly remove it only while its table session is open and before the item is protected by allocation or payment state. Setting a quantity to zero is not an update operation; removal is a separate, intentional mutation. A bill item's snapshotted name and unit price are not edited in place. Correcting the selected product means removing the incorrect line and adding a new line from the intended active catalog item. Every correction revalidates the complete bill total inside the same transaction and is serialized with other open-session mutations.
+
+**Reason:** Quantity correction and removal cover normal restaurant mistakes without allowing historical or financial meaning to be silently rewritten. Separate operations make intent auditable, retain catalog-derived snapshots as financial truth, and provide a stable boundary for later allocation and payment rules.
+
+**Accepted trade-off:** V1 does not provide arbitrary editing of a bill item's product, name, or price. Stage 4 allocation and later payment work will tighten this boundary by rejecting or explicitly handling corrections that affect protected allocations or completed payments; those future rules must not weaken closed-session immutability.
+
 ### Controlled polling
 
 **Decision:** Poll approximately every two seconds only while a shared bill view is active, and refresh immediately after relevant mutations.

@@ -196,7 +196,7 @@ Turn the first slice into a safe restaurant workflow for managing a controlled p
 6. Preserve table-session history with a terminal close timestamp, allow reopening only by creating a new session, revoke guest access on close, and enforce at most one open session per table with a PostgreSQL partial unique index.
 7. Create new bill items from active catalog entries during normal restaurant operation while retaining validated manual entry only where an explicit development or recovery boundary requires it.
 8. Preserve each bill item's name and unit-price snapshot as financial truth, optionally retaining its catalog-item reference for traceability; later catalog changes must not rewrite an existing bill.
-9. Add staff bill operations for correction, quantity changes, and removal while the changes are still financially safe.
+9. Add staff bill operations to change a line's positive quantity or explicitly remove it while its table session is open. Do not edit snapshotted product names or prices in place; correct the selected product by removing the incorrect line and adding the intended catalog item. Serialize corrections with other open-session mutations and revalidate the complete bill total transactionally.
 10. Handle multiple quantities of identical products as explicit quantities/units suitable for later allocation.
 11. Decide and enforce what staff may change after allocations or successful payments exist; preserve completed payment history and prevent casual financial rewriting.
 12. Add audit-friendly timestamps and records where needed to explain operational state changes without building event sourcing.
@@ -221,7 +221,7 @@ Turn the first slice into a safe restaurant workflow for managing a controlled p
 - Closing preserves the session and bill history, invalidates its join and guest credentials, and reopening creates a distinct session.
 - Concurrent attempts cannot leave more than one open session for a table; PostgreSQL enforces the invariant independently of application timing.
 - Invalid prices, quantities, and state transitions are rejected server-side.
-- Corrections before allocation work; unsafe corrections after allocation/payment are blocked or handled by the explicit rule.
+- Open-session quantity corrections and explicit removals preserve exact aggregate totals; closed-session items and snapshotted names and prices remain immutable. Unsafe corrections after allocation/payment are blocked or handled by the explicit rule.
 - A completed payment record cannot be edited or erased through normal bill-management operations.
 
 ### Suggested Git Checkpoints

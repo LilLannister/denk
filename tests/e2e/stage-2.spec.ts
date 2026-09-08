@@ -4,7 +4,7 @@ import { stage2Fixture } from "./stage-2-fixture";
 
 import { GUEST_SESSION_COOKIE_NAME } from "../../src/lib/guest-session-cookie";
 
-test("staff opens and populates a bill that an anonymous guest joins and views", async ({
+test("staff operates a bill across an anonymous guest journey", async ({
   browser,
 }) => {
   const staffContext = await browser.newContext();
@@ -94,6 +94,73 @@ test("staff opens and populates a bill that an anonymous guest joins and views",
     expect(
       staffCookies.some((cookie) => cookie.name === GUEST_SESSION_COOKIE_NAME),
     ).toBe(false);
+    const correctionQuantity = restaurantSection.getByLabel(
+      "Quantity for E2E Shared Breakfast",
+    );
+
+    await correctionQuantity.fill("3");
+
+    await restaurantSection
+      .getByRole("button", { name: "Update quantity" })
+      .click();
+
+    await expect(
+      restaurantSection.getByText("Bill item quantity updated."),
+    ).toBeVisible();
+
+    await expect(
+      restaurantSection.getByText("3 × E2E Shared Breakfast at ₺125.50"),
+    ).toBeVisible();
+
+    await expect(correctionQuantity).toHaveValue("3");
+
+    await expect(restaurantSection.getByText("Total: ₺376.50")).toBeVisible();
+
+    await guestPage.reload();
+
+    await expect(guestPage.getByText("3 × E2E Shared Breakfast")).toBeVisible();
+    await expect(guestPage.getByText("Total: ₺376.50")).toBeVisible();
+
+    staffPage.once("dialog", async (dialog) => {
+      expect(dialog.message()).toBe(
+        "Remove E2E Shared Breakfast from this bill?",
+      );
+
+      await dialog.dismiss();
+    });
+
+    await restaurantSection
+      .getByRole("button", { name: "Remove item" })
+      .click();
+
+    await expect(
+      restaurantSection.getByText("3 × E2E Shared Breakfast at ₺125.50"),
+    ).toBeVisible();
+
+    await expect(restaurantSection.getByText("Total: ₺376.50")).toBeVisible();
+
+    staffPage.once("dialog", async (dialog) => {
+      expect(dialog.message()).toBe(
+        "Remove E2E Shared Breakfast from this bill?",
+      );
+
+      await dialog.accept();
+    });
+
+    await restaurantSection
+      .getByRole("button", { name: "Remove item" })
+      .click();
+
+    await expect(
+      restaurantSection.getByText("No bill items yet."),
+    ).toBeVisible();
+
+    await expect(restaurantSection.getByText("Total: ₺0.00")).toBeVisible();
+
+    await guestPage.reload();
+
+    await expect(guestPage.getByText("No bill items yet.")).toBeVisible();
+    await expect(guestPage.getByText("Total: ₺0.00")).toBeVisible();
     staffPage.once("dialog", async (dialog) => {
       expect(dialog.message()).toBe(
         "Close this bill? Guests will immediately lose access.",

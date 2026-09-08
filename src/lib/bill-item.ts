@@ -14,6 +14,19 @@ const addBillItemSchema = z.object({
   quantity: z.number().int().positive().max(maximumDatabaseInteger),
 });
 
+const updateBillItemQuantitySchema = z.object({
+  userId: z.string().min(1),
+  restaurantTableId: z.string().min(1),
+  billItemId: z.string().min(1),
+  quantity: z.number().int().positive().max(maximumDatabaseInteger),
+});
+
+const removeBillItemSchema = z.object({
+  userId: z.string().min(1),
+  restaurantTableId: z.string().min(1),
+  billItemId: z.string().min(1),
+});
+
 export class InvalidBillItemError extends Error {
   constructor() {
     super("Bill item details are invalid");
@@ -42,6 +55,38 @@ export class BillItemCatalogItemUnavailableError extends Error {
   }
 }
 
+export class BillItemNotFoundError extends Error {
+  constructor() {
+    super("Bill item was not found");
+    this.name = "BillItemNotFoundError";
+  }
+}
+
+async function requireAuthorizedRestaurantTable({
+  userId,
+  restaurantTableId,
+}: {
+  userId: string;
+  restaurantTableId: string;
+}) {
+  const restaurantTable = await prisma.restaurantTable.findUnique({
+    where: {
+      id: restaurantTableId,
+    },
+    select: {
+      restaurantId: true,
+    },
+  });
+
+  if (!restaurantTable) {
+    throw new BillItemTableNotFoundError();
+  }
+
+  await requireRestaurantMembership(userId, restaurantTable.restaurantId);
+
+  return restaurantTable;
+}
+
 export async function addBillItem(input: {
   userId: string;
   restaurantTableId: string;
@@ -54,23 +99,10 @@ export async function addBillItem(input: {
     throw new InvalidBillItemError();
   }
 
-  const restaurantTable = await prisma.restaurantTable.findUnique({
-    where: {
-      id: parsedInput.data.restaurantTableId,
-    },
-    select: {
-      restaurantId: true,
-    },
+  const restaurantTable = await requireAuthorizedRestaurantTable({
+    userId: parsedInput.data.userId,
+    restaurantTableId: parsedInput.data.restaurantTableId,
   });
-
-  if (!restaurantTable) {
-    throw new BillItemTableNotFoundError();
-  }
-
-  await requireRestaurantMembership(
-    parsedInput.data.userId,
-    restaurantTable.restaurantId,
-  );
 
   return prisma.$transaction(async (transaction) => {
     const openSession = await lockOpenTableSession(
@@ -144,6 +176,139 @@ export async function addBillItem(input: {
         name: catalogItem.name,
         quantity: parsedInput.data.quantity,
         unitPriceMinor: catalogItem.unitPriceMinor,
+      },
+    });
+  });
+}
+
+export async function updateBillItemQuantity(input: {
+  userId: string;
+  restaurantTableId: string;
+  billItemId: string;
+  quantity: number;
+}) {
+  const parsedInput = updateBillItemQuantitySchema.safeParse(input);
+
+  if (!parsedInput.success) {
+    throw new InvalidBillItemError();
+  }
+
+  await requireAuthorizedRestaurantTable({
+    userId: parsedInput.data.userId,
+    restaurantTableId: parsedInput.data.restaurantTableId,
+  });
+
+  return prisma.$transaction(async (transaction) => {
+    const openSession = await lockOpenTableSession(
+      transaction,
+      parsedInput.data.restaurantTableId,
+    );
+
+    if (!openSession) {
+      throw new BillItemTableSessionNotOpenError();
+    }
+
+    const currentSession = await transaction.tableSession.findUniqueOrThrow({
+      where: {
+        id: openSession.id,
+      },
+      select: {
+        billItems: {
+          select: {
+            id: true,
+            quantity: true,
+            unitPriceMinor: true,
+          },
+        },
+      },
+    });
+
+    const billItem = currentSession.billItems.find(
+      (item) => item.id === parsedInput.data.billItemId,
+    );
+
+    if (!billItem) {
+      throw new BillItemNotFoundError();
+    }
+
+    try {
+      const updatedLineTotalMinor =
+        parsedInput.data.quantity * billItem.unitPriceMinor;
+
+      if (!Number.isSafeInteger(updatedLineTotalMinor)) {
+        throw new InvalidBillItemError();
+      }
+
+      currentSession.billItems.reduce((total, item) => {
+        const lineTotalMinor =
+          item.id === billItem.id
+            ? updatedLineTotalMinor
+            : item.quantity * item.unitPriceMinor;
+
+        return addMinorUnits(total, lineTotalMinor);
+      }, 0);
+    } catch (error) {
+      if (error instanceof InvalidMoneyAmountError) {
+        throw new InvalidBillItemError();
+      }
+
+      throw error;
+    }
+
+    return transaction.billItem.update({
+      where: {
+        id: billItem.id,
+      },
+      data: {
+        quantity: parsedInput.data.quantity,
+      },
+    });
+  });
+}
+
+export async function removeBillItem(input: {
+  userId: string;
+  restaurantTableId: string;
+  billItemId: string;
+}) {
+  const parsedInput = removeBillItemSchema.safeParse(input);
+
+  if (!parsedInput.success) {
+    throw new InvalidBillItemError();
+  }
+
+  await requireAuthorizedRestaurantTable({
+    userId: parsedInput.data.userId,
+    restaurantTableId: parsedInput.data.restaurantTableId,
+  });
+
+  return prisma.$transaction(async (transaction) => {
+    const openSession = await lockOpenTableSession(
+      transaction,
+      parsedInput.data.restaurantTableId,
+    );
+
+    if (!openSession) {
+      throw new BillItemTableSessionNotOpenError();
+    }
+
+    const billItem = await transaction.billItem.findFirst({
+      where: {
+        id: parsedInput.data.billItemId,
+        tableSessionId: openSession.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!billItem) {
+      throw new BillItemNotFoundError();
+    }
+
+    return transaction.billItem.delete({
+      where: {
+        id: billItem.id,
       },
     });
   });
