@@ -90,6 +90,14 @@ This document records the technology and architecture decisions that are settled
 
 **Accepted trade-off:** Authorization remains DENK code that must be designed, tested, and consistently applied; the authentication library does not solve it automatically.
 
+### Restaurant capability matrix
+
+**Decision:** Keep V1 restaurant authorization as a two-level, restaurant-scoped capability matrix. Both `ADMIN` and `STAFF` may view the staff workspace and perform normal operations on existing restaurant resources: open, rotate, and close table sessions and add, correct, or remove bill items. Only `ADMIN` may administer restaurant structure, including creating, renaming, or deactivating tables. Every application service resolves membership or Admin authority server-side from the authenticated user and the owning restaurant; UI visibility, submitted identifiers, and possession of a resource ID never grant capability.
+
+**Reason:** Staff need the complete day-to-day bill workflow, while structural changes have a broader and longer-lived operational impact. A small explicit matrix is easier to audit and test than scattered role comparisons or a premature configurable permission system.
+
+**Accepted trade-off:** V1 has no custom roles, per-user overrides, or permission-management UI. `requireRestaurantMembership` is the shared operational boundary and `requireRestaurantAdmin` is the administration boundary. More granular capabilities require a new documented product need rather than ad hoc role checks.
+
 ### Authentication identity and restaurant membership ownership
 
 **Decision:** Better Auth owns its core persistent identity and session data, including user, session, account, and verification records. DENK owns `Restaurant`, `RestaurantMembership`, restaurant-scoped `ADMIN`/`STAFF` roles, and resource authorization. `RestaurantMembership` references the Better Auth user identifier and is unique for a user/restaurant pair. Application services receive a minimal authenticated user identifier from the auth boundary and resolve DENK membership themselves.
