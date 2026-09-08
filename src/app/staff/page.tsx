@@ -8,6 +8,7 @@ import { getStaffWorkspaceProjection } from "@/lib/staff-workspace";
 import { AddBillItemForm } from "./add-bill-item-form";
 import { OpenTableSessionForm } from "./open-table-session-form";
 import { SignOutButton } from "./sign-out-button";
+import { BillItemCorrectionControls } from "./bill-item-correction-controls";
 
 export default async function StaffPage() {
   const session = await auth.api.getSession({
@@ -77,9 +78,21 @@ export default async function StaffPage() {
                       ) : (
                         <ul className="mt-2 space-y-1">
                           {table.currentSession.billItems.map((item) => (
-                            <li className="text-sm" key={item.id}>
-                              {item.quantity} × {item.name} at{" "}
-                              {formatTryAmount(item.unitPriceMinor)}
+                            <li
+                              className="rounded border p-3 text-sm"
+                              key={item.id}
+                            >
+                              <p>
+                                {item.quantity} × {item.name} at{" "}
+                                {formatTryAmount(item.unitPriceMinor)}
+                              </p>
+
+                              <BillItemCorrectionControls
+                                billItemId={item.id}
+                                itemName={item.name}
+                                quantity={item.quantity}
+                                restaurantTableId={table.id}
+                              />
                             </li>
                           ))}
                         </ul>
