@@ -83,6 +83,9 @@ jobs:
       - name: Build application
         run: pnpm build
 
+      - name: Remove unrelated Google Chrome apt source
+        run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
 
