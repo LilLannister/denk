@@ -18,6 +18,7 @@ import {
 } from "@/lib/table-session";
 
 import {
+  BillItemAllocationConflictError,
   BillItemCatalogItemUnavailableError,
   BillItemNotFoundError,
   BillItemTableNotFoundError,
@@ -627,6 +628,13 @@ export async function updateBillItemQuantityAction(
       };
     }
 
+    if (error instanceof BillItemAllocationConflictError) {
+      return {
+        status: "error",
+        message: "Quantity cannot be lower than the number of claimed units.",
+      };
+    }
+
     if (error instanceof BillItemNotFoundError) {
       return {
         status: "error",
@@ -698,6 +706,13 @@ export async function removeBillItemAction(
       message: "Bill item removed.",
     };
   } catch (error) {
+    if (error instanceof BillItemAllocationConflictError) {
+      return {
+        status: "error",
+        message: "Release all claimed units before removing this bill item.",
+      };
+    }
+
     if (error instanceof BillItemNotFoundError) {
       return {
         status: "error",
