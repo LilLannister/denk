@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  BillItemAllocationConflictError,
   BillItemCatalogItemUnavailableError,
   BillItemNotFoundError,
   BillItemTableNotFoundError,
@@ -15,9 +16,16 @@ import {
 import { prisma } from "./prisma";
 import { RestaurantAccessDeniedError } from "./staff-authorization";
 
+import {
+  BillItemAllocationUnavailableError,
+  claimBillItemUnits,
+} from "./bill-item-allocation";
+import { hashGuestToken } from "./guest-token";
+
 let restaurantId: string;
 let otherRestaurantId: string;
 let restaurantTableId: string;
+let publicTableId: string;
 let catalogItemId: string;
 let inactiveCatalogItemId: string;
 let largeCatalogItemId: string;
@@ -124,6 +132,7 @@ beforeEach(async () => {
   restaurantId = restaurant.id;
   otherRestaurantId = otherRestaurant.id;
   restaurantTableId = restaurant.tables[0].id;
+  publicTableId = restaurant.tables[0].publicId;
   catalogItemId = items.find((item) => item.name === "Shared breakfast")!.id;
   inactiveCatalogItemId = items.find(
     (item) => item.name === "Inactive item",
@@ -139,6 +148,16 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await prisma.billItemAllocation.deleteMany({
+    where: {
+      billItem: {
+        tableSession: {
+          restaurantTableId,
+        },
+      },
+    },
+  });
+
   await prisma.restaurant.deleteMany({
     where: { id: { in: [restaurantId, otherRestaurantId] } },
   });
@@ -153,6 +172,38 @@ afterAll(async () => {
 
 const countBillItems = () =>
   prisma.billItem.count({ where: { tableSession: { restaurantTableId } } });
+
+async function createAllocation({
+  billItemId,
+  quantity,
+}: {
+  billItemId: string;
+  quantity: number;
+}) {
+  const tableSession = await prisma.tableSession.findFirstOrThrow({
+    where: {
+      restaurantTableId,
+      closedAt: null,
+    },
+  });
+
+  const guestSession = await prisma.guestSession.create({
+    data: {
+      tableSessionId: tableSession.id,
+      tokenHash: `bill-item-allocation-${randomUUID()}`,
+      expiresAt: new Date(Date.now() + 60_000),
+    },
+  });
+
+  return prisma.billItemAllocation.create({
+    data: {
+      tableSessionId: tableSession.id,
+      billItemId,
+      guestSessionId: guestSession.id,
+      quantity,
+    },
+  });
+}
 
 describe("adding bill items", () => {
   it("copies the selected catalog item into the open bill", async () => {
@@ -331,6 +382,79 @@ describe("adding bill items", () => {
 });
 
 describe("updating bill item quantities", () => {
+  it("serializes a concurrent claim with quantity reduction", async () => {
+    const billItem = await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId,
+      quantity: 2,
+    });
+
+    const tableSession = await prisma.tableSession.findFirstOrThrow({
+      where: {
+        restaurantTableId,
+        closedAt: null,
+      },
+    });
+
+    const token = `concurrent-correction-${randomUUID()}`;
+
+    await prisma.guestSession.create({
+      data: {
+        tableSessionId: tableSession.id,
+        tokenHash: hashGuestToken(token),
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+
+    const results = await Promise.allSettled([
+      claimBillItemUnits({
+        publicTableId,
+        token,
+        billItemId: billItem.id,
+        quantity: 2,
+      }),
+      updateBillItemQuantity({
+        userId,
+        restaurantTableId,
+        billItemId: billItem.id,
+        quantity: 1,
+      }),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+
+    const rejected = results.filter((result) => result.status === "rejected");
+
+    expect(rejected).toHaveLength(1);
+
+    if (rejected[0]?.status === "rejected") {
+      expect(rejected[0].reason).toSatisfy(
+        (error: unknown) =>
+          error instanceof BillItemAllocationConflictError ||
+          error instanceof BillItemAllocationUnavailableError,
+      );
+    }
+
+    const storedBillItem = await prisma.billItem.findUniqueOrThrow({
+      where: {
+        id: billItem.id,
+      },
+      include: {
+        allocations: true,
+      },
+    });
+
+    const allocatedQuantity = storedBillItem.allocations.reduce(
+      (total, allocation) => total + allocation.quantity,
+      0,
+    );
+
+    expect(allocatedQuantity).toBeLessThanOrEqual(storedBillItem.quantity);
+  });
+
   it("updates only the quantity of an item in the open session", async () => {
     const billItem = await addBillItem({
       userId,
@@ -504,6 +628,91 @@ describe("updating bill item quantities", () => {
       quantity: 1,
     });
   });
+
+  it("allows increasing a bill item with existing allocations", async () => {
+    const billItem = await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId,
+      quantity: 2,
+    });
+
+    await createAllocation({
+      billItemId: billItem.id,
+      quantity: 2,
+    });
+
+    await expect(
+      updateBillItemQuantity({
+        userId,
+        restaurantTableId,
+        billItemId: billItem.id,
+        quantity: 4,
+      }),
+    ).resolves.toMatchObject({
+      id: billItem.id,
+      quantity: 4,
+    });
+  });
+
+  it("allows reducing a bill item to exactly its allocated quantity", async () => {
+    const billItem = await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId,
+      quantity: 3,
+    });
+
+    await createAllocation({
+      billItemId: billItem.id,
+      quantity: 2,
+    });
+
+    await expect(
+      updateBillItemQuantity({
+        userId,
+        restaurantTableId,
+        billItemId: billItem.id,
+        quantity: 2,
+      }),
+    ).resolves.toMatchObject({
+      id: billItem.id,
+      quantity: 2,
+    });
+  });
+
+  it("rejects reducing a bill item below its allocated quantity", async () => {
+    const billItem = await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId,
+      quantity: 3,
+    });
+
+    await createAllocation({
+      billItemId: billItem.id,
+      quantity: 2,
+    });
+
+    await expect(
+      updateBillItemQuantity({
+        userId,
+        restaurantTableId,
+        billItemId: billItem.id,
+        quantity: 1,
+      }),
+    ).rejects.toThrow(BillItemAllocationConflictError);
+
+    await expect(
+      prisma.billItem.findUniqueOrThrow({
+        where: {
+          id: billItem.id,
+        },
+      }),
+    ).resolves.toMatchObject({
+      quantity: 3,
+    });
+  });
 });
 
 describe("removing bill items", () => {
@@ -603,6 +812,36 @@ describe("removing bill items", () => {
     await expect(
       prisma.billItem.findUnique({
         where: { id: billItem.id },
+      }),
+    ).resolves.not.toBeNull();
+  });
+
+  it("rejects removal while the bill item has allocations", async () => {
+    const billItem = await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId,
+      quantity: 2,
+    });
+
+    await createAllocation({
+      billItemId: billItem.id,
+      quantity: 1,
+    });
+
+    await expect(
+      removeBillItem({
+        userId,
+        restaurantTableId,
+        billItemId: billItem.id,
+      }),
+    ).rejects.toThrow(BillItemAllocationConflictError);
+
+    await expect(
+      prisma.billItem.findUnique({
+        where: {
+          id: billItem.id,
+        },
       }),
     ).resolves.not.toBeNull();
   });

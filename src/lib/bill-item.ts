@@ -4,6 +4,9 @@ import { InvalidMoneyAmountError, addMinorUnits } from "./money";
 import { lockOpenTableSession } from "./open-table-session-lock";
 import { prisma } from "./prisma";
 import { requireRestaurantMembership } from "./staff-authorization";
+import { lockBillItem } from "./bill-item-lock";
+
+import type { Prisma } from "../generated/prisma/client";
 
 const maximumDatabaseInteger = 2_147_483_647;
 
@@ -62,6 +65,13 @@ export class BillItemNotFoundError extends Error {
   }
 }
 
+export class BillItemAllocationConflictError extends Error {
+  constructor() {
+    super("Bill item is protected by existing allocations");
+    this.name = "BillItemAllocationConflictError";
+  }
+}
+
 async function requireAuthorizedRestaurantTable({
   userId,
   restaurantTableId,
@@ -85,6 +95,30 @@ async function requireAuthorizedRestaurantTable({
   await requireRestaurantMembership(userId, restaurantTable.restaurantId);
 
   return restaurantTable;
+}
+
+async function getAllocatedQuantity(
+  transaction: Prisma.TransactionClient,
+  billItemId: string,
+) {
+  const allocations = await transaction.billItemAllocation.findMany({
+    where: {
+      billItemId,
+    },
+    select: {
+      quantity: true,
+    },
+  });
+
+  return allocations.reduce((total, allocation) => {
+    const nextTotal = total + allocation.quantity;
+
+    if (!Number.isSafeInteger(nextTotal)) {
+      throw new BillItemAllocationConflictError();
+    }
+
+    return nextTotal;
+  }, 0);
 }
 
 export async function addBillItem(input: {
@@ -208,6 +242,24 @@ export async function updateBillItemQuantity(input: {
       throw new BillItemTableSessionNotOpenError();
     }
 
+    const billItem = await lockBillItem(transaction, {
+      billItemId: parsedInput.data.billItemId,
+      tableSessionId: openSession.id,
+    });
+
+    if (!billItem) {
+      throw new BillItemNotFoundError();
+    }
+
+    const allocatedQuantity = await getAllocatedQuantity(
+      transaction,
+      billItem.id,
+    );
+
+    if (parsedInput.data.quantity < allocatedQuantity) {
+      throw new BillItemAllocationConflictError();
+    }
+
     const currentSession = await transaction.tableSession.findUniqueOrThrow({
       where: {
         id: openSession.id,
@@ -222,14 +274,6 @@ export async function updateBillItemQuantity(input: {
         },
       },
     });
-
-    const billItem = currentSession.billItems.find(
-      (item) => item.id === parsedInput.data.billItemId,
-    );
-
-    if (!billItem) {
-      throw new BillItemNotFoundError();
-    }
 
     try {
       const updatedLineTotalMinor =
@@ -292,18 +336,22 @@ export async function removeBillItem(input: {
       throw new BillItemTableSessionNotOpenError();
     }
 
-    const billItem = await transaction.billItem.findFirst({
-      where: {
-        id: parsedInput.data.billItemId,
-        tableSessionId: openSession.id,
-      },
-      select: {
-        id: true,
-      },
+    const billItem = await lockBillItem(transaction, {
+      billItemId: parsedInput.data.billItemId,
+      tableSessionId: openSession.id,
     });
 
     if (!billItem) {
       throw new BillItemNotFoundError();
+    }
+
+    const allocatedQuantity = await getAllocatedQuantity(
+      transaction,
+      billItem.id,
+    );
+
+    if (allocatedQuantity > 0) {
+      throw new BillItemAllocationConflictError();
     }
 
     return transaction.billItem.delete({

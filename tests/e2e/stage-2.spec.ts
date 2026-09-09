@@ -78,7 +78,28 @@ test("staff operates a bill across an anonymous guest journey", async ({
       }),
     ).toBeVisible();
     await expect(guestPage.getByText("2 × E2E Shared Breakfast")).toBeVisible();
-    await expect(guestPage.getByText("Total: ₺251.00")).toBeVisible();
+    await expect(guestPage.getByText("Claimed: 0 of 2")).toBeVisible();
+    await expect(guestPage.getByText("Available: 2 · Yours: 0")).toBeVisible();
+    await expect(guestPage.getByText("Bill total: ₺251.00")).toBeVisible();
+    await expect(guestPage.getByText("Claimed: ₺0.00")).toBeVisible();
+    await expect(guestPage.getByText("Remaining: ₺251.00")).toBeVisible();
+    await expect(guestPage.getByText("Your share: ₺0.00")).toBeVisible();
+
+    const claimButton = guestPage.getByRole("button", {
+      name: "Claim one E2E Shared Breakfast",
+    });
+
+    await claimButton.click();
+
+    await expect(guestPage.getByText("Available: 1 · Yours: 1")).toBeVisible();
+    await expect(guestPage.getByText("Your share: ₺125.50")).toBeVisible();
+
+    await claimButton.click();
+
+    await expect(guestPage.getByText("Available: 0 · Yours: 2")).toBeVisible();
+    await expect(guestPage.getByText("Claimed: ₺251.00")).toBeVisible();
+    await expect(guestPage.getByText("Remaining: ₺0.00")).toBeVisible();
+    await expect(guestPage.getByText("Your share: ₺251.00")).toBeVisible();
 
     const guestCookies = await guestContext.cookies();
     const guestSessionCookie = guestCookies.find(
@@ -100,6 +121,33 @@ test("staff operates a bill across an anonymous guest journey", async ({
       "Quantity for E2E Shared Breakfast",
     );
 
+    await correctionQuantity.fill("1");
+
+    await restaurantSection
+      .getByRole("button", { name: "Update quantity" })
+      .click();
+
+    await expect(
+      restaurantSection.getByText(
+        "Quantity cannot be lower than the number of claimed units.",
+      ),
+    ).toBeVisible();
+
+    await expect(
+      restaurantSection.getByText("2 × E2E Shared Breakfast at ₺125.50"),
+    ).toBeVisible();
+    await expect(correctionQuantity).toHaveValue("2");
+    await expect(restaurantSection.getByText("Total: ₺251.00")).toBeVisible();
+
+    await guestPage
+      .getByRole("button", {
+        name: "Release one E2E Shared Breakfast",
+      })
+      .click();
+
+    await expect(guestPage.getByText("Available: 1 · Yours: 1")).toBeVisible();
+    await expect(guestPage.getByText("Your share: ₺125.50")).toBeVisible();
+
     await correctionQuantity.fill("3");
 
     await restaurantSection
@@ -115,13 +163,16 @@ test("staff operates a bill across an anonymous guest journey", async ({
     ).toBeVisible();
 
     await expect(correctionQuantity).toHaveValue("3");
-
     await expect(restaurantSection.getByText("Total: ₺376.50")).toBeVisible();
 
     await guestPage.reload();
 
     await expect(guestPage.getByText("3 × E2E Shared Breakfast")).toBeVisible();
-    await expect(guestPage.getByText("Total: ₺376.50")).toBeVisible();
+    await expect(guestPage.getByText("Available: 2 · Yours: 1")).toBeVisible();
+    await expect(guestPage.getByText("Bill total: ₺376.50")).toBeVisible();
+    await expect(guestPage.getByText("Claimed: ₺125.50")).toBeVisible();
+    await expect(guestPage.getByText("Remaining: ₺251.00")).toBeVisible();
+    await expect(guestPage.getByText("Your share: ₺125.50")).toBeVisible();
 
     staffPage.once("dialog", async (dialog) => {
       expect(dialog.message()).toBe(
@@ -154,15 +205,47 @@ test("staff operates a bill across an anonymous guest journey", async ({
       .click();
 
     await expect(
-      restaurantSection.getByText("No bill items yet."),
+      restaurantSection.getByText(
+        "Release all claimed units before removing this bill item.",
+      ),
     ).toBeVisible();
 
+    await expect(
+      restaurantSection.getByText("3 × E2E Shared Breakfast at ₺125.50"),
+    ).toBeVisible();
+
+    await guestPage
+      .getByRole("button", {
+        name: "Release one E2E Shared Breakfast",
+      })
+      .click();
+
+    await expect(guestPage.getByText("Available: 3 · Yours: 0")).toBeVisible();
+    await expect(guestPage.getByText("Your share: ₺0.00")).toBeVisible();
+
+    staffPage.once("dialog", async (dialog) => {
+      expect(dialog.message()).toBe(
+        "Remove E2E Shared Breakfast from this bill?",
+      );
+
+      await dialog.accept();
+    });
+
+    await restaurantSection
+      .getByRole("button", { name: "Remove item" })
+      .click();
+
+    await expect(
+      restaurantSection.getByText("No bill items yet."),
+    ).toBeVisible();
     await expect(restaurantSection.getByText("Total: ₺0.00")).toBeVisible();
 
     await guestPage.reload();
 
     await expect(guestPage.getByText("No bill items yet.")).toBeVisible();
-    await expect(guestPage.getByText("Total: ₺0.00")).toBeVisible();
+    await expect(guestPage.getByText("Bill total: ₺0.00")).toBeVisible();
+    await expect(guestPage.getByText("Your share: ₺0.00")).toBeVisible();
+
     staffPage.once("dialog", async (dialog) => {
       expect(dialog.message()).toBe(
         "Close this bill? Guests will immediately lose access.",
@@ -224,7 +307,9 @@ test("staff operates a bill across an anonymous guest journey", async ({
 
     await expect(guestPage.getByText("No bill items yet.")).toBeVisible();
 
-    await expect(guestPage.getByText("Total: ₺0.00")).toBeVisible();
+    await expect(guestPage.getByText("Bill total: ₺0.00")).toBeVisible();
+
+    await expect(guestPage.getByText("Your share: ₺0.00")).toBeVisible();
   } finally {
     await staffContext.close();
     await guestContext.close();

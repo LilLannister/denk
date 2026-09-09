@@ -182,6 +182,8 @@ These corrections preserve Stage 2's completed status: they strengthen a financi
 
 ## Stage 3 — Restaurant Operations, Tables, and Bill Integrity
 
+**Status: Complete.**
+
 ### Goal
 
 Turn the first slice into a safe restaurant workflow for managing a controlled product catalog, tables, session lifecycle, and active-bill corrections without weakening tenant or financial boundaries.
@@ -235,7 +237,27 @@ Turn the first slice into a safe restaurant workflow for managing a controlled p
 
 Restaurant users can safely operate from a controlled restaurant catalog, manage tables and active bills within their authorized scope, and make only corrections permitted by lifecycle and completed-payment invariants.
 
+### Completion Record
+
+Stage 3 delivered and verified the restaurant-side operating foundation required before guests can allocate bill responsibility:
+
+- the staff workspace uses a focused restaurant-scoped projection with exact aggregate totals;
+- categorized catalog records have stable restaurant-scoped identities, exact TRY prices, active state, deterministic ordering, and database-enforced structural constraints;
+- a versioned, schema-validated operator import applies catalog changes atomically and idempotently without treating omission as deletion;
+- normal bill entry uses active catalog items while preserving immutable name and unit-price snapshots on existing bill lines;
+- table sessions retain history, permit at most one open session per table, revoke guest access on closure, and create a distinct session when reopened;
+- open bill lines support explicit quantity correction and removal without permitting in-place product, name, or price rewriting;
+- the `ADMIN` and `STAFF` capability boundary is enforced server-side, including Admin-only structural table management;
+- durable tables retain stable guest-page identities across rename, deactivation, and reactivation, and shared row locking makes table activation state consistent with concurrent session opening; and
+- integration and browser coverage exercises tenant isolation, catalog integrity, bill correction, session lifecycle, table administration, concurrency boundaries, and the complete staff-to-guest viewing journey.
+
+PRs #19 through #26 established the staff projection, categorized catalog schema, transactional catalog import, catalog-backed bill items, complete table-session lifecycle, safe bill correction, explicit restaurant capabilities, and secure table management. Each merged through the protected `main` workflow with successful pull-request and post-merge verification.
+
+Allocation and payment records intentionally do not exist yet. Stage 4 introduces whole-unit allocation and tightens bill-correction rules around allocated quantities; later payment stages add the completed-payment protections anticipated by the Stage 3 boundaries.
+
 ## Stage 4 — Whole-Item Allocation and Payable Calculation
+
+**Status: In progress.**
 
 ### Goal
 
@@ -243,11 +265,11 @@ Allow guests to claim, release, and understand responsibility for whole items or
 
 ### What I Will Implement
 
-1. Introduce the minimum allocation model needed to represent ownership of a whole item unit by a guest session.
-2. Implement application services for claim and release operations, with guest-session and active-bill authorization on every mutation.
-3. Support multiple quantities so guests can claim individual units without confusing them with unrelated identical items.
+1. Introduce the minimum allocation model needed to record a positive integer quantity of whole units claimed by one guest session from one bill item. Keep at most one allocation row for each guest-session/bill-item pair and derive its value from the bill item's immutable unit-price snapshot.
+2. Implement application services for claim and release operations, with guest-session validity, table-session scope, and open-bill authorization on every mutation. A guest may release only their own unpaid allocation; transferring responsibility is an explicit release followed by a new claim.
+3. Support multiple quantities so guests can claim or release a requested number of whole units without confusing quantity within one bill line with unrelated identical bill lines.
 4. Add server-derived availability, claimed state, unpaid state, and the current guest's payable amount.
-5. Prevent release or reassignment once an allocation is part of a pending or successful payment according to the payment-safety rules.
+5. Serialize claims, releases, and staff quantity corrections through the same bill-item lock. Never allow total allocated quantity to exceed the bill-item quantity; reject removal of an allocated line and reject reducing its quantity below the allocated quantity. Later payment work must prevent release or reassignment once an allocation is protected by a pending or successful payment.
 6. Keep monetary calculation in domain/application code and return display-ready state to the UI.
 7. Update the guest interface so a person can select their items, review their current share, correct an unpaid mistake, and optionally cover another person's unclaimed items by claiming them.
 
@@ -265,6 +287,7 @@ Allow guests to claim, release, and understand responsibility for whole items or
 - A guest cannot mutate another bill or use an expired/revoked guest session.
 - Claimed, paid, and remaining amounts always reconcile to the bill total.
 - Duplicate or invalid mutation requests do not create impossible quantities.
+- Concurrent claims for the final available unit cannot both succeed, and staff corrections cannot reduce a line below its allocated quantity.
 - UI-supplied prices or payable totals are ignored; the server derives them from current database state.
 
 ### Suggested Git Checkpoints

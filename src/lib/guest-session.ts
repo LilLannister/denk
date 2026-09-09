@@ -1,7 +1,7 @@
 import { parseEnvironment } from "./env";
 import { generateGuestToken, hashGuestToken } from "./guest-token";
 import { verifyJoinCode } from "./join-code";
-import { addMinorUnits } from "./money";
+import { InvalidMoneyAmountError, addMinorUnits } from "./money";
 import { prisma } from "./prisma";
 import { lockOpenTableSession } from "./open-table-session-lock";
 
@@ -95,6 +95,7 @@ export async function getGuestBillProjection({
       tokenHash: hashGuestToken(token),
     },
     select: {
+      id: true,
       revokedAt: true,
       expiresAt: true,
       tableSession: {
@@ -108,9 +109,16 @@ export async function getGuestBillProjection({
           },
           billItems: {
             select: {
+              id: true,
               name: true,
               quantity: true,
               unitPriceMinor: true,
+              allocations: {
+                select: {
+                  guestSessionId: true,
+                  quantity: true,
+                },
+              },
             },
             orderBy: {
               createdAt: "asc",
@@ -131,18 +139,76 @@ export async function getGuestBillProjection({
     return null;
   }
 
-  const items = guestSession.tableSession.billItems.map((item) => ({
-    name: item.name,
-    quantity: item.quantity,
-    unitPriceMinor: item.unitPriceMinor,
-    lineTotalMinor: item.quantity * item.unitPriceMinor,
-  }));
+  const items = guestSession.tableSession.billItems.map((item) => {
+    const claimedQuantity = item.allocations.reduce((total, allocation) => {
+      const nextTotal = total + allocation.quantity;
+
+      if (!Number.isSafeInteger(nextTotal) || nextTotal > item.quantity) {
+        throw new InvalidMoneyAmountError();
+      }
+
+      return nextTotal;
+    }, 0);
+
+    const currentGuestClaimedQuantity = item.allocations
+      .filter((allocation) => allocation.guestSessionId === guestSession.id)
+      .reduce((total, allocation) => {
+        const nextTotal = total + allocation.quantity;
+
+        if (!Number.isSafeInteger(nextTotal)) {
+          throw new InvalidMoneyAmountError();
+        }
+
+        return nextTotal;
+      }, 0);
+
+    const lineTotalMinor = addMinorUnits(
+      0,
+      item.quantity * item.unitPriceMinor,
+    );
+
+    const claimedMinor = addMinorUnits(
+      0,
+      claimedQuantity * item.unitPriceMinor,
+    );
+
+    const currentGuestLineTotalMinor = addMinorUnits(
+      0,
+      currentGuestClaimedQuantity * item.unitPriceMinor,
+    );
+
+    return {
+      id: item.id,
+      name: item.name,
+      quantity: item.quantity,
+      unitPriceMinor: item.unitPriceMinor,
+      lineTotalMinor,
+      claimedQuantity,
+      availableQuantity: item.quantity - claimedQuantity,
+      currentGuestClaimedQuantity,
+      claimedMinor,
+      currentGuestLineTotalMinor,
+    };
+  });
 
   return {
     tableName: guestSession.tableSession.restaurantTable.name,
     items,
     totalMinor: items.reduce(
       (total, item) => addMinorUnits(total, item.lineTotalMinor),
+      0,
+    ),
+    claimedMinor: items.reduce(
+      (total, item) => addMinorUnits(total, item.claimedMinor),
+      0,
+    ),
+    remainingMinor: items.reduce(
+      (total, item) =>
+        addMinorUnits(total, item.lineTotalMinor - item.claimedMinor),
+      0,
+    ),
+    currentGuestPayableMinor: items.reduce(
+      (total, item) => addMinorUnits(total, item.currentGuestLineTotalMinor),
       0,
     ),
   };

@@ -148,6 +148,18 @@ This document records the technology and architecture decisions that are settled
 
 **Accepted trade-off:** V1 does not provide arbitrary editing of a bill item's product, name, or price. Stage 4 allocation and later payment work will tighten this boundary by rejecting or explicitly handling corrections that affect protected allocations or completed payments; those future rules must not weaken closed-session immutability.
 
+### Whole-unit allocation identity and conservation
+
+**Decision:** Represent a Stage 4 allocation as a positive integer quantity of whole units claimed by one `GuestSession` from one `BillItem`, with at most one allocation row for each guest-session/bill-item pair. The allocation stores ownership and quantity, not a client-supplied price or payable total. Its monetary value is always derived from the bill item's immutable unit-price snapshot. The sum of allocation quantities for a bill item must never exceed that bill item's quantity.
+
+Every claim, release, and staff quantity correction locks the owning bill-item row and revalidates allocation conservation in the same transaction. A valid, unexpired, unrevoked guest session may mutate only allocations in its own open table session. A guest may release only their own unpaid units; responsibility is never silently transferred between guests. Reassignment is expressed as one guest releasing units and another guest claiming the newly available units.
+
+Staff may increase an open bill line's quantity while allocations exist, but may not reduce it below the total allocated quantity or remove the line until all allocations are released. Payment stages will further protect allocations associated with pending or successful payment attempts.
+
+**Reason:** An aggregate row per guest and bill item is the smallest model that supports multiple identical units, exact payable calculation, and an understandable claim/release interface without manufacturing one database record per physical unit. Locking the bill item gives claims and staff corrections one serialization boundary, so stale UI state cannot cause over-allocation or invalidate existing responsibility.
+
+**Accepted trade-off:** Whole-unit allocation cannot represent splitting one unit among several guests; that is intentionally deferred to Stage 5. PostgreSQL cannot express the cross-row allocation sum with a simple check constraint, so transactional locking and integration tests enforce conservation. Retrying the same non-idempotent quantity command could repeat it; Stage 4 UI must disable duplicate submissions and refresh authoritative state, while explicit request idempotency is introduced where the payment lifecycle requires it.
+
 ### Controlled polling
 
 **Decision:** Poll approximately every two seconds only while a shared bill view is active, and refresh immediately after relevant mutations.

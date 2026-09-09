@@ -67,6 +67,17 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await prisma.billItemAllocation.deleteMany({
+    where: {
+      billItem: {
+        tableSession: {
+          restaurantTable: {
+            restaurantId,
+          },
+        },
+      },
+    },
+  });
   await prisma.restaurant.delete({
     where: {
       id: restaurantId,
@@ -137,19 +148,34 @@ describe("guest table-session joining", () => {
       tableName: expect.stringMatching(/^Guest Table /),
       items: [
         {
+          id: expect.any(String),
           name: "Shared breakfast",
           quantity: 2,
           unitPriceMinor: 12_550,
           lineTotalMinor: 25_100,
+          claimedQuantity: 0,
+          availableQuantity: 2,
+          currentGuestClaimedQuantity: 0,
+          claimedMinor: 0,
+          currentGuestLineTotalMinor: 0,
         },
         {
+          id: expect.any(String),
           name: "Tea",
           quantity: 1,
           unitPriceMinor: 500,
           lineTotalMinor: 500,
+          claimedQuantity: 0,
+          availableQuantity: 1,
+          currentGuestClaimedQuantity: 0,
+          claimedMinor: 0,
+          currentGuestLineTotalMinor: 0,
         },
       ],
       totalMinor: 25_600,
+      claimedMinor: 0,
+      remainingMinor: 25_600,
+      currentGuestPayableMinor: 0,
     });
   });
 
@@ -247,6 +273,9 @@ describe("guest table-session joining", () => {
       tableName: expect.stringMatching(/^Guest Table /),
       items: [],
       totalMinor: 0,
+      claimedMinor: 0,
+      remainingMinor: 0,
+      currentGuestPayableMinor: 0,
     });
   });
 
@@ -375,5 +404,116 @@ describe("guest table-session joining", () => {
     });
 
     expect(bill).toBeNull();
+  });
+
+  it("returns allocation totals without exposing guest identities", async () => {
+    const now = new Date("2026-09-03T12:00:00.000Z");
+
+    const currentGuest = await joinTableSession({
+      publicTableId,
+      joinCode,
+      now,
+    });
+
+    const otherGuest = await joinTableSession({
+      publicTableId,
+      joinCode,
+      now,
+    });
+
+    const billItem = await prisma.billItem.create({
+      data: {
+        tableSessionId,
+        name: "Shared breakfast",
+        quantity: 3,
+        unitPriceMinor: 12_550,
+      },
+    });
+
+    await prisma.billItemAllocation.createMany({
+      data: [
+        {
+          tableSessionId,
+          billItemId: billItem.id,
+          guestSessionId: currentGuest.guestSession.id,
+          quantity: 1,
+        },
+        {
+          tableSessionId,
+          billItemId: billItem.id,
+          guestSessionId: otherGuest.guestSession.id,
+          quantity: 1,
+        },
+      ],
+    });
+
+    const bill = await getGuestBillProjection({
+      publicTableId,
+      token: currentGuest.token,
+      now,
+    });
+
+    expect(bill).toEqual({
+      tableName: expect.stringMatching(/^Guest Table /),
+      items: [
+        {
+          id: billItem.id,
+          name: "Shared breakfast",
+          quantity: 3,
+          unitPriceMinor: 12_550,
+          lineTotalMinor: 37_650,
+          claimedQuantity: 2,
+          availableQuantity: 1,
+          currentGuestClaimedQuantity: 1,
+          claimedMinor: 25_100,
+          currentGuestLineTotalMinor: 12_550,
+        },
+      ],
+      totalMinor: 37_650,
+      claimedMinor: 25_100,
+      remainingMinor: 12_550,
+      currentGuestPayableMinor: 12_550,
+    });
+
+    const serializedBill = JSON.stringify(bill);
+
+    expect(serializedBill).not.toContain(currentGuest.guestSession.id);
+    expect(serializedBill).not.toContain(otherGuest.guestSession.id);
+  });
+
+  it("rejects a stored allocation exceeding the bill-item quantity", async () => {
+    const now = new Date("2026-09-03T12:00:00.000Z");
+
+    const joined = await joinTableSession({
+      publicTableId,
+      joinCode,
+      now,
+    });
+
+    const billItem = await prisma.billItem.create({
+      data: {
+        tableSessionId,
+        name: "Tea",
+        quantity: 1,
+        unitPriceMinor: 500,
+      },
+    });
+
+    await prisma.billItemAllocation.create({
+      data: {
+        tableSessionId,
+        billItemId: billItem.id,
+        guestSessionId: joined.guestSession.id,
+        quantity: 2,
+      },
+    });
+
+    await expect(
+      getGuestBillProjection({
+        publicTableId,
+        token: joined.token,
+        now,
+      }),
+    ).rejects.toThrow(InvalidMoneyAmountError);
   });
 });

@@ -154,6 +154,23 @@ async function main() {
     },
   });
 
+  const existingTableSessions = await prisma.tableSession.findMany({
+    where: {
+      restaurantTableId: restaurantTable.id,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  await prisma.billItemAllocation.deleteMany({
+    where: {
+      tableSessionId: {
+        in: existingTableSessions.map((tableSession) => tableSession.id),
+      },
+    },
+  });
+
   await prisma.tableSession.deleteMany({
     where: {
       restaurantTableId: restaurantTable.id,

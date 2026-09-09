@@ -5,6 +5,7 @@ import { GUEST_SESSION_COOKIE_NAME } from "@/lib/guest-session-cookie";
 import { formatTryAmount } from "@/lib/money";
 
 import { JoinTableForm } from "./join-table-form";
+import { BillItemAllocationControls } from "./bill-item-allocation-controls";
 
 export default async function GuestTablePage({
   params,
@@ -48,25 +49,41 @@ export default async function GuestTablePage({
         <p className="mt-8 text-gray-600">No bill items yet.</p>
       ) : (
         <ul className="mt-8 divide-y">
-          {bill.items.map((item, index) => (
-            <li
-              className="flex justify-between gap-4 py-3"
-              key={`${item.name}-${index}`}
-            >
-              <span>
-                {item.quantity} × {item.name}
-              </span>
-              <span className="shrink-0 text-right">
-                {formatTryAmount(item.lineTotalMinor)}
-              </span>
+          {bill.items.map((item) => (
+            <li className="py-4" key={item.id}>
+              <div className="flex justify-between gap-4">
+                <span>
+                  {item.quantity} × {item.name}
+                </span>
+                <span className="shrink-0 text-right">
+                  {formatTryAmount(item.lineTotalMinor)}
+                </span>
+              </div>
+
+              <p className="mt-1 text-sm text-gray-600">
+                Claimed: {item.claimedQuantity} of {item.quantity}
+              </p>
+
+              <BillItemAllocationControls
+                availableQuantity={item.availableQuantity}
+                billItemId={item.id}
+                currentGuestClaimedQuantity={item.currentGuestClaimedQuantity}
+                itemName={item.name}
+                publicTableId={publicTableId}
+              />
             </li>
           ))}
         </ul>
       )}
 
-      <p className="mt-6 text-right font-semibold">
-        Total: {formatTryAmount(bill.totalMinor)}
-      </p>
+      <div className="mt-6 space-y-1 border-t pt-4 text-right">
+        <p>Bill total: {formatTryAmount(bill.totalMinor)}</p>
+        <p>Claimed: {formatTryAmount(bill.claimedMinor)}</p>
+        <p>Remaining: {formatTryAmount(bill.remainingMinor)}</p>
+        <p className="text-lg font-semibold">
+          Your share: {formatTryAmount(bill.currentGuestPayableMinor)}
+        </p>
+      </div>
     </main>
   );
 }

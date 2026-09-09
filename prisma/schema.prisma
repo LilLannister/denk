@@ -175,32 +175,53 @@ model TableSession {
 }
 
 model BillItem {
-  id             String       @id @default(cuid())
+  id             String               @id @default(cuid())
   tableSessionId String
-  tableSession   TableSession @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
+  tableSession   TableSession         @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
   catalogItemId  String?
-  catalogItem    CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
+  catalogItem    CatalogItem?         @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
   name           String
   quantity       Int
   unitPriceMinor Int
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  allocations    BillItemAllocation[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
+  @@unique([id, tableSessionId])
   @@index([tableSessionId])
   @@index([catalogItemId])
   @@map("bill_item")
 }
 
-model GuestSession {
+model BillItemAllocation {
   id             String       @id @default(cuid())
   tableSessionId String
-  tableSession   TableSession @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
-  tokenHash      String       @unique
-  expiresAt      DateTime
-  revokedAt      DateTime?
+  billItemId     String
+  billItem       BillItem     @relation(fields: [billItemId, tableSessionId], references: [id, tableSessionId], onDelete: Restrict)
+  guestSessionId String
+  guestSession   GuestSession @relation(fields: [guestSessionId, tableSessionId], references: [id, tableSessionId], onDelete: Restrict)
+  quantity       Int
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  @@unique([guestSessionId, billItemId])
+  @@index([billItemId])
+  @@index([tableSessionId])
+  @@map("bill_item_allocation")
+}
+
+model GuestSession {
+  id             String               @id @default(cuid())
+  tableSessionId String
+  tableSession   TableSession         @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
+  tokenHash      String               @unique
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  allocations    BillItemAllocation[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@unique([id, tableSessionId])
   @@index([tableSessionId])
   @@map("guest_session")
 }
