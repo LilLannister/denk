@@ -6,6 +6,7 @@ import { verifyJoinCode } from "./join-code";
 import { prisma } from "./prisma";
 import { RestaurantAccessDeniedError } from "./staff-authorization";
 import {
+  RestaurantTableInactiveError,
   RestaurantTableNotFoundError,
   TableSessionAlreadyOpenError,
   TableSessionNotOpenError,
@@ -199,6 +200,32 @@ describe("opening a table session", () => {
         TableSessionAlreadyOpenError,
       );
     }
+  });
+
+  it("rejects opening a session for an inactive table", async () => {
+    await prisma.restaurantTable.update({
+      where: {
+        id: restaurantTableId,
+      },
+      data: {
+        isActive: false,
+      },
+    });
+
+    await expect(
+      openTableSession({
+        userId,
+        restaurantTableId,
+      }),
+    ).rejects.toBeInstanceOf(RestaurantTableInactiveError);
+
+    await expect(
+      prisma.tableSession.count({
+        where: {
+          restaurantTableId,
+        },
+      }),
+    ).resolves.toBe(0);
   });
 });
 

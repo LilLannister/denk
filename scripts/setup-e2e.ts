@@ -83,6 +83,18 @@ async function main() {
     },
   });
 
+  await prisma.restaurantTable.deleteMany({
+    where: {
+      restaurantId: restaurant.id,
+      name: {
+        in: [
+          stage2Fixture.managedTableName,
+          stage2Fixture.renamedManagedTableName,
+        ],
+      },
+    },
+  });
+
   const restaurantTable = await prisma.restaurantTable.upsert({
     where: {
       restaurantId_name: {
@@ -90,7 +102,9 @@ async function main() {
         name: stage2Fixture.tableName,
       },
     },
-    update: {},
+    update: {
+      isActive: true,
+    },
     create: {
       restaurantId: restaurant.id,
       name: stage2Fixture.tableName,

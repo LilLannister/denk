@@ -98,6 +98,14 @@ This document records the technology and architecture decisions that are settled
 
 **Accepted trade-off:** V1 has no custom roles, per-user overrides, or permission-management UI. `requireRestaurantMembership` is the shared operational boundary and `requireRestaurantAdmin` is the administration boundary. More granular capabilities require a new documented product need rather than ad hoc role checks.
 
+### Restaurant-table administration and lifecycle
+
+**Decision:** Model restaurant tables as durable restaurant-owned records with a stable, opaque `publicId` and an explicit `isActive` state. Only `ADMIN` may create, rename, deactivate, or reactivate a table. Rename and activation changes preserve the table's database identity and `publicId`. Normal V1 operation never physically deletes a table. Table names remain unique within their restaurant, including inactive tables. Both `ADMIN` and `STAFF` may see operational table status, but a new table session may be opened only for an active table. Deactivation is rejected while the table has an open session.
+
+**Reason:** Stable QR identities and retained session history require tables to outlive operational changes. Explicit deactivation prevents destructive deletion from cascading into historical bills, while Admin-only structural mutations keep day-to-day Staff capabilities narrow and predictable.
+
+**Accepted trade-off:** An inactive table continues to reserve its name; an Admin must rename it before reusing that name elsewhere. Activation changes and session opening must lock the same restaurant-table row and validate state in their transaction so a concurrent deactivation and open cannot both succeed. V1 does not support table deletion, public-ID rotation, bulk table administration, or table transfer between restaurants.
+
 ### Authentication identity and restaurant membership ownership
 
 **Decision:** Better Auth owns its core persistent identity and session data, including user, session, account, and verification records. DENK owns `Restaurant`, `RestaurantMembership`, restaurant-scoped `ADMIN`/`STAFF` roles, and resource authorization. `RestaurantMembership` references the Better Auth user identifier and is unique for a user/restaurant pair. Application services receive a minimal authenticated user identifier from the auth boundary and resolve DENK membership themselves.

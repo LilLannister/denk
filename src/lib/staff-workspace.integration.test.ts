@@ -122,6 +122,7 @@ describe("staff workspace projection", () => {
     expect(projection[0]).toMatchObject({
       role: "STAFF",
       restaurant: {
+        id: restaurantId,
         tables: [
           {
             name: "Table A",
@@ -145,6 +146,7 @@ describe("staff workspace projection", () => {
           },
           {
             name: "Table B",
+            isActive: true,
             currentSession: null,
           },
         ],
@@ -313,6 +315,32 @@ describe("staff workspace projection", () => {
 
     await expect(getStaffWorkspaceProjection(userId)).rejects.toThrow(
       InvalidMoneyAmountError,
+    );
+  });
+
+  it("includes inactive tables with their operational state", async () => {
+    await prisma.restaurantTable.update({
+      where: {
+        restaurantId_name: {
+          restaurantId,
+          name: "Table B",
+        },
+      },
+      data: {
+        isActive: false,
+      },
+    });
+
+    const projection = await getStaffWorkspaceProjection(userId);
+
+    expect(projection[0].restaurant.tables).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Table B",
+          isActive: false,
+          currentSession: null,
+        }),
+      ]),
     );
   });
 });

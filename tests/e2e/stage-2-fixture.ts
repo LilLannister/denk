@@ -4,6 +4,8 @@ export const stage2Fixture = {
   staffPassword: "stage-2-e2e-password",
   restaurantName: "Stage 2 E2E Restaurant",
   tableName: "Stage 2 E2E Table",
+  managedTableName: "Stage 3 E2E Managed Table",
+  renamedManagedTableName: "Stage 3 E2E Renamed Table",
   catalogCategoryKey: "e2e-breakfasts",
   catalogCategoryName: "Breakfasts",
   catalogItemKey: "e2e-shared-breakfast",

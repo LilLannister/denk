@@ -11,6 +11,7 @@ export async function getStaffWorkspaceProjection(userId: string) {
       role: true,
       restaurant: {
         select: {
+          id: true,
           name: true,
           catalogCategories: {
             where: {
@@ -57,6 +58,7 @@ export async function getStaffWorkspaceProjection(userId: string) {
               id: true,
               name: true,
               publicId: true,
+              isActive: true,
               tableSessions: {
                 where: {
                   closedAt: null,
@@ -93,6 +95,7 @@ export async function getStaffWorkspaceProjection(userId: string) {
     id: membership.id,
     role: membership.role,
     restaurant: {
+      id: membership.restaurant.id,
       name: membership.restaurant.name,
       catalogCategories: membership.restaurant.catalogCategories.map(
         (category) => ({
@@ -114,6 +117,7 @@ export async function getStaffWorkspaceProjection(userId: string) {
             id: table.id,
             name: table.name,
             publicId: table.publicId,
+            isActive: table.isActive,
             currentSession: null,
           };
         }
@@ -135,6 +139,7 @@ export async function getStaffWorkspaceProjection(userId: string) {
           id: table.id,
           name: table.name,
           publicId: table.publicId,
+          isActive: table.isActive,
           currentSession: {
             billItems,
             totalMinor,

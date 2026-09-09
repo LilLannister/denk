@@ -192,7 +192,7 @@ Turn the first slice into a safe restaurant workflow for managing a controlled p
 2. Move the growing staff workspace read model and derived totals behind a focused application query/projection service; avoid a generic repository abstraction that adds no behavioral boundary.
 3. Add restaurant-scoped `CatalogItem` records with a stable lowercase key, display name, exact TRY unit price, active state, and audit-friendly timestamps.
 4. Add an operator-controlled, schema-validated JSON import that targets one explicit restaurant and applies catalog changes atomically and idempotently. Reject duplicate keys; treat omitted entries as unchanged; require explicit deactivation or reactivation; and do not physically delete catalog items during normal V1 operation.
-5. Let Admin manage restaurant tables and their stable QR identities; let authorized restaurant users view operational table state.
+5. Let Admin create, rename, deactivate, and reactivate durable restaurant tables while preserving stable QR identities and all session history. Let authorized restaurant users view operational table state, prevent new sessions on inactive tables, reject deactivation while a session is open, and serialize activation changes with session opening through a shared table-row lock.
 6. Preserve table-session history with a terminal close timestamp, allow reopening only by creating a new session, revoke guest access on close, and enforce at most one open session per table with a PostgreSQL partial unique index.
 7. Create new bill items from active catalog entries during normal restaurant operation while retaining validated manual entry only where an explicit development or recovery boundary requires it.
 8. Preserve each bill item's name and unit-price snapshot as financial truth, optionally retaining its catalog-item reference for traceability; later catalog changes must not rewrite an existing bill.
@@ -213,7 +213,7 @@ Turn the first slice into a safe restaurant workflow for managing a controlled p
 
 ### Key Tests / Verification
 
-- Admin and Staff can perform existing-table session and bill operations; only Admin can create, rename, or deactivate tables.
+- Admin and Staff can view table status and operate active-table sessions and bills; only Admin can create, rename, deactivate, or reactivate tables. Rename and activation changes preserve the stable QR identity, inactive tables cannot open sessions, and tables with open sessions cannot be deactivated even under concurrent requests.
 - Cross-restaurant reads and mutations fail even when valid resource IDs are supplied directly.
 - Repeating the same valid catalog import produces the same state; invalid or duplicate input leaves the catalog unchanged.
 - Catalog imports cannot affect another restaurant, omission does not deactivate an item, and explicit deactivate/reactivate operations behave predictably.
