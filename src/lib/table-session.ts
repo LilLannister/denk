@@ -3,6 +3,7 @@ import { digestJoinCode, generateJoinCode } from "./join-code";
 import { prisma } from "./prisma";
 import { requireRestaurantMembership } from "./staff-authorization";
 import { lockOpenTableSession } from "./open-table-session-lock";
+import { lockRestaurantTable } from "./restaurant-table-lock";
 
 const JOIN_CODE_LIFETIME_MS = 15 * 60 * 1_000;
 
@@ -10,6 +11,13 @@ export class RestaurantTableNotFoundError extends Error {
   constructor() {
     super("Restaurant table not found");
     this.name = "RestaurantTableNotFoundError";
+  }
+}
+
+export class RestaurantTableInactiveError extends Error {
+  constructor() {
+    super("Restaurant table is inactive");
+    this.name = "RestaurantTableInactiveError";
   }
 }
 
@@ -50,7 +58,6 @@ export async function openTableSession({
       id: restaurantTableId,
     },
     select: {
-      id: true,
       restaurantId: true,
     },
   });
@@ -61,38 +68,57 @@ export async function openTableSession({
 
   await requireRestaurantMembership(userId, restaurantTable.restaurantId);
 
-  const existingSession = await prisma.tableSession.findFirst({
-    where: {
-      restaurantTableId,
-      closedAt: null,
-    },
-  });
-
-  if (existingSession) {
-    throw new TableSessionAlreadyOpenError();
-  }
-
   const environment = parseEnvironment(process.env);
   const joinCode = generateJoinCode();
 
   try {
-    const tableSession = await prisma.tableSession.create({
-      data: {
+    return await prisma.$transaction(async (transaction) => {
+      const lockedTable = await lockRestaurantTable(
+        transaction,
         restaurantTableId,
-        joinCodeDigest: digestJoinCode(
-          joinCode,
-          environment.BETTER_AUTH_SECRET,
-        ),
-        joinCodeExpiresAt: new Date(now.getTime() + JOIN_CODE_LIFETIME_MS),
-      },
-    });
+      );
 
-    return {
-      tableSession,
-      joinCode,
-    };
+      if (!lockedTable) {
+        throw new RestaurantTableNotFoundError();
+      }
+
+      if (!lockedTable.isActive) {
+        throw new RestaurantTableInactiveError();
+      }
+
+      const existingSession = await transaction.tableSession.findFirst({
+        where: {
+          restaurantTableId,
+          closedAt: null,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (existingSession) {
+        throw new TableSessionAlreadyOpenError();
+      }
+
+      const tableSession = await transaction.tableSession.create({
+        data: {
+          restaurantTableId,
+          joinCodeDigest: digestJoinCode(
+            joinCode,
+            environment.BETTER_AUTH_SECRET,
+          ),
+          joinCodeExpiresAt: new Date(now.getTime() + JOIN_CODE_LIFETIME_MS),
+        },
+      });
+
+      return {
+        tableSession,
+        joinCode,
+      };
+    });
   } catch (error) {
-    // The database uniqueness constraint also protects against simultaneous opens.
+    // The partial unique database index remains the final protection
+    // against more than one open session.
     if (isUniqueConstraintError(error)) {
       throw new TableSessionAlreadyOpenError();
     }

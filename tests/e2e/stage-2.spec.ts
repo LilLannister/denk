@@ -28,6 +28,8 @@ test("staff operates a bill across an anonymous guest journey", async ({
         name: stage2Fixture.restaurantName,
         level: 2,
       })
+      .locator("..")
+      .getByText(stage2Fixture.tableName, { exact: true })
       .locator("..");
 
     const guestTablePath = await restaurantSection
@@ -226,5 +228,179 @@ test("staff operates a bill across an anonymous guest journey", async ({
   } finally {
     await staffContext.close();
     await guestContext.close();
+  }
+});
+
+test("Admin manages a table without changing its guest identity", async ({
+  browser,
+}) => {
+  const staffContext = await browser.newContext();
+
+  try {
+    const staffPage = await staffContext.newPage();
+
+    await staffPage.goto("/staff/sign-in");
+    await staffPage.getByLabel("Email").fill(stage2Fixture.staffEmail);
+    await staffPage.getByLabel("Password").fill(stage2Fixture.staffPassword);
+    await staffPage.getByRole("button", { name: "Sign in" }).click();
+
+    await expect(
+      staffPage.getByRole("heading", { name: "Staff workspace" }),
+    ).toBeVisible();
+
+    const restaurantSection = staffPage
+      .getByRole("heading", {
+        name: stage2Fixture.restaurantName,
+        level: 2,
+      })
+      .locator("..");
+
+    await restaurantSection
+      .getByLabel("New table name")
+      .fill(stage2Fixture.managedTableName);
+
+    await restaurantSection
+      .getByRole("button", { name: "Create table" })
+      .click();
+
+    await expect(restaurantSection.getByText("Table created.")).toBeVisible();
+
+    const managedTable = restaurantSection
+      .getByText(stage2Fixture.managedTableName, { exact: true })
+      .locator("..");
+
+    await expect(
+      managedTable.getByText("Active", { exact: true }),
+    ).toBeVisible();
+
+    const originalGuestPath = await managedTable
+      .getByRole("link", {
+        name: `Open guest page for ${stage2Fixture.managedTableName}`,
+      })
+      .getAttribute("href");
+
+    expect(originalGuestPath).not.toBeNull();
+
+    await managedTable
+      .getByLabel("Table name")
+      .fill(stage2Fixture.renamedManagedTableName);
+
+    await managedTable.getByRole("button", { name: "Rename table" }).click();
+
+    const renamedTable = restaurantSection
+      .getByText(stage2Fixture.renamedManagedTableName, { exact: true })
+      .locator("..");
+
+    await expect(renamedTable.getByText("Table renamed.")).toBeVisible();
+
+    const renamedGuestPath = await renamedTable
+      .getByRole("link", {
+        name: `Open guest page for ${stage2Fixture.renamedManagedTableName}`,
+      })
+      .getAttribute("href");
+
+    expect(renamedGuestPath).toBe(originalGuestPath);
+
+    staffPage.once("dialog", async (dialog) => {
+      expect(dialog.message()).toBe(
+        `Deactivate ${stage2Fixture.renamedManagedTableName}? It cannot open bills until reactivated.`,
+      );
+
+      await dialog.accept();
+    });
+
+    await renamedTable
+      .getByRole("button", { name: "Deactivate table" })
+      .click();
+
+    await expect(renamedTable.getByText("Table deactivated.")).toBeVisible();
+
+    await expect(
+      renamedTable.getByText("Inactive", { exact: true }),
+    ).toBeVisible();
+
+    await expect(
+      renamedTable.getByRole("button", { name: "Open bill" }),
+    ).toHaveCount(0);
+
+    await expect(
+      renamedTable.getByText("Reactivate this table before opening a bill."),
+    ).toBeVisible();
+
+    await renamedTable
+      .getByRole("button", { name: "Reactivate table" })
+      .click();
+
+    await expect(renamedTable.getByText("Table reactivated.")).toBeVisible();
+
+    await expect(
+      renamedTable.getByText("Active", { exact: true }),
+    ).toBeVisible();
+
+    await renamedTable.getByRole("button", { name: "Open bill" }).click();
+
+    await expect(
+      renamedTable.getByText(/^[0-9A-HJKMNP-TV-Z]{8}$/),
+    ).toBeVisible();
+
+    staffPage.once("dialog", async (dialog) => {
+      expect(dialog.message()).toBe(
+        `Deactivate ${stage2Fixture.renamedManagedTableName}? It cannot open bills until reactivated.`,
+      );
+
+      await dialog.accept();
+    });
+
+    await renamedTable
+      .getByRole("button", { name: "Deactivate table" })
+      .click();
+
+    await expect(
+      renamedTable.getByText(
+        "Close the current bill before deactivating this table.",
+      ),
+    ).toBeVisible();
+
+    await expect(
+      renamedTable.getByRole("button", { name: "Close bill" }),
+    ).toBeVisible();
+
+    staffPage.once("dialog", async (dialog) => {
+      expect(dialog.message()).toBe(
+        "Close this bill? Guests will immediately lose access.",
+      );
+
+      await dialog.accept();
+    });
+
+    await renamedTable.getByRole("button", { name: "Close bill" }).click();
+
+    await expect(renamedTable.getByText("Table session closed.")).toBeVisible();
+
+    staffPage.once("dialog", async (dialog) => {
+      expect(dialog.message()).toBe(
+        `Deactivate ${stage2Fixture.renamedManagedTableName}? It cannot open bills until reactivated.`,
+      );
+
+      await dialog.accept();
+    });
+
+    await renamedTable
+      .getByRole("button", { name: "Deactivate table" })
+      .click();
+
+    await expect(
+      renamedTable.getByText("Inactive", { exact: true }),
+    ).toBeVisible();
+
+    const finalGuestPath = await renamedTable
+      .getByRole("link", {
+        name: `Open guest page for ${stage2Fixture.renamedManagedTableName}`,
+      })
+      .getAttribute("href");
+
+    expect(finalGuestPath).toBe(originalGuestPath);
+  } finally {
+    await staffContext.close();
   }
 });

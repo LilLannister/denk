@@ -146,6 +146,7 @@ model RestaurantTable {
   id            String         @id @default(cuid())
   publicId      String         @unique @default(cuid())
   name          String
+  isActive      Boolean        @default(true)
   restaurantId  String
   restaurant    Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   tableSessions TableSession[]
@@ -153,6 +154,7 @@ model RestaurantTable {
   updatedAt     DateTime       @updatedAt
 
   @@unique([restaurantId, name])
+  @@index([restaurantId, isActive])
   @@map("restaurant_table")
 }
 

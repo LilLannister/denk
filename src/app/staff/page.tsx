@@ -10,6 +10,9 @@ import { OpenTableSessionForm } from "./open-table-session-form";
 import { SignOutButton } from "./sign-out-button";
 import { BillItemCorrectionControls } from "./bill-item-correction-controls";
 
+import { CreateRestaurantTableForm } from "./create-restaurant-table-form";
+import { RestaurantTableManagementControls } from "./restaurant-table-management-controls";
+
 export default async function StaffPage() {
   const session = await auth.api.getSession({
     headers: await headers(),
@@ -51,11 +54,20 @@ export default async function StaffPage() {
               Role: {membership.role}
             </p>
 
+            {membership.role === "ADMIN" ? (
+              <CreateRestaurantTableForm
+                restaurantId={membership.restaurant.id}
+              />
+            ) : null}
+
             <h3 className="mt-5 font-medium">Tables</h3>
             <ul className="mt-2 list-inside list-disc">
               {membership.restaurant.tables.map((table) => (
                 <li className="py-2" key={table.id}>
                   <span>{table.name}</span>
+                  <span className="ml-3 text-sm text-gray-600">
+                    {table.isActive ? "Active" : "Inactive"}
+                  </span>
                   <a
                     aria-label={`Open guest page for ${table.name}`}
                     className="ml-3 text-sm underline"
@@ -63,10 +75,25 @@ export default async function StaffPage() {
                   >
                     Guest table page
                   </a>
-                  <OpenTableSessionForm
-                    restaurantTableId={table.id}
-                    hasOpenSession={Boolean(table.currentSession)}
-                  />
+                  {membership.role === "ADMIN" ? (
+                    <RestaurantTableManagementControls
+                      isActive={table.isActive}
+                      restaurantTableId={table.id}
+                      tableName={table.name}
+                    />
+                  ) : null}
+                  {table.isActive ? (
+                    <OpenTableSessionForm
+                      restaurantTableId={table.id}
+                      hasOpenSession={Boolean(table.currentSession)}
+                    />
+                  ) : (
+                    <p className="mt-3 text-sm text-gray-600">
+                      {membership.role === "ADMIN"
+                        ? "Reactivate this table before opening a bill."
+                        : "This table is inactive. Ask an Admin to reactivate it."}
+                    </p>
+                  )}
                   {table.currentSession ? (
                     <div className="mt-4">
                       <h4 className="font-medium">Current bill</h4>
