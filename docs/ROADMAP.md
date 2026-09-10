@@ -257,7 +257,7 @@ Allocation and payment records intentionally do not exist yet. Stage 4 introduce
 
 ## Stage 4 — Whole-Item Allocation and Payable Calculation
 
-**Status: In progress.**
+**Status: Complete.**
 
 ### Goal
 
@@ -285,7 +285,7 @@ Allow guests to claim, release, and understand responsibility for whole items or
 
 - A guest can claim and release available whole units and sees the exact expected payable amount.
 - A guest cannot mutate another bill or use an expired/revoked guest session.
-- Claimed, paid, and remaining amounts always reconcile to the bill total.
+- Claimed and remaining amounts always reconcile to the bill total; later payment stages extend that reconciliation with paid state.
 - Duplicate or invalid mutation requests do not create impossible quantities.
 - Concurrent claims for the final available unit cannot both succeed, and staff corrections cannot reduce a line below its allocated quantity.
 - UI-supplied prices or payable totals are ignored; the server derives them from current database state.
@@ -298,6 +298,21 @@ Allow guests to claim, release, and understand responsibility for whole items or
 ### Exit Condition
 
 Multiple guests can allocate distinct whole items/units, correct unpaid selections, and see server-authoritative payable and remaining totals that reconcile exactly.
+
+### Completion Record
+
+Stage 4 delivered and verified the complete whole-item allocation boundary:
+
+- a positive whole-unit allocation belongs to one guest session and one bill item in the same table session, with at most one aggregate allocation row per guest-session/bill-item pair;
+- allocation value is derived exclusively from the bill item's immutable unit-price snapshot, and guest projections expose server-authoritative claimed, available, remaining, and current-guest payable totals without exposing other guest identities;
+- valid, unexpired, unrevoked guests may claim available units and release only their own unpaid units while the table session remains open;
+- claims, releases, and staff quantity corrections share the same table-session and bill-item locking order, preventing concurrent over-allocation and conflicting staff mutations;
+- staff may increase an allocated bill line, but cannot reduce it below its allocated quantity or remove it until all allocations are released;
+- PostgreSQL enforces positive allocation quantities, one allocation per guest and bill-item pair, same-table-session relationships, and deletion protection for allocated bill items and guest sessions;
+- integration coverage verifies tenant and session isolation, invalid credentials and quantities, final-unit concurrency, staff-correction races, exact money derivation, corrupt stored-state rejection, and allocation ownership; and
+- Playwright verifies the guest claim/release journey together with staff correction conflicts, removal after release, session closure, reopening, and rejoining.
+
+PR #27 introduced this allocation slice and passed the protected pull-request workflow and post-merge verification. Stage 4 intentionally leaves shared and partial allocation to Stage 5, shared-state refresh to Stage 6, and pending/successful payment protection, paid-state reconciliation, payment-command idempotency, and provider-authoritative settlement to Stages 7 and 8.
 
 ## Stage 5 — Shared and Partial Allocation
 
