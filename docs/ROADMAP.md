@@ -314,6 +314,21 @@ Stage 4 delivered and verified the complete whole-item allocation boundary:
 
 PR #27 introduced this allocation slice and passed the protected pull-request workflow and post-merge verification. Stage 4 intentionally leaves shared and partial allocation to Stage 5, shared-state refresh to Stage 6, and pending/successful payment protection, paid-state reconciliation, payment-command idempotency, and provider-authoritative settlement to Stages 7 and 8.
 
+## Pre-Stage-5 Hardening Transition
+
+**Status: Complete.**
+
+An independent review after the Stage 4 closure confirmed its exit condition while identifying one lifecycle decision and two focused coverage improvements that should be resolved before partial allocation increases the state space:
+
+- until payment state exists, closing a table session preserves its allocations as immutable historical selection records, revokes guest access, and prevents further allocation mutation without interpreting those records as payment or settlement; later payment state—not historical allocation existence alone—will govern whether settlement permits closure;
+- add direct concurrency coverage for a guest claim racing with staff removal of the same bill item, proving the shared bill-item lock permits only removal-before-claim or claim-before-rejected-removal outcomes;
+- add a two-guest browser acceptance journey that proves independent anonymous guests can allocate against the same active bill and observe authoritative totals after explicit reloads, without pulling Stage 6 polling into this transition; and
+- correct the stale catalog decision wording that rejected all categories even though Stage 3 intentionally introduced restaurant-scoped catalog categories.
+
+This transition does not reopen Stage 3 or Stage 4. It makes the terminal closure boundary explicit, strengthens automated evidence for already-designed locking and multi-guest behavior, and aligns the technical record with the categorized catalog implementation.
+
+The transition is complete: table-session integration coverage proves closure preserves allocations while revoking guest access; allocation-service coverage proves closed allocations cannot be claimed or released; a dedicated concurrency test proves claim and staff removal serialize without orphaned state; and two independent guest browser contexts allocate the same bill, reconcile authoritative totals after explicit reloads, and lose access together on terminal closure. The focused changes passed the complete repository verification with 230 Vitest tests, a production build, and four Playwright journeys.
+
 ## Stage 5 — Shared and Partial Allocation
 
 ### Goal

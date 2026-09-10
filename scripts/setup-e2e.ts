@@ -111,6 +111,22 @@ async function main() {
     },
   });
 
+  const allocationRestaurantTable = await prisma.restaurantTable.upsert({
+    where: {
+      restaurantId_name: {
+        restaurantId: restaurant.id,
+        name: stage2Fixture.allocationTableName,
+      },
+    },
+    update: {
+      isActive: true,
+    },
+    create: {
+      restaurantId: restaurant.id,
+      name: stage2Fixture.allocationTableName,
+    },
+  });
+
   const catalogCategory = await prisma.catalogCategory.upsert({
     where: {
       restaurantId_key: {
@@ -156,7 +172,9 @@ async function main() {
 
   const existingTableSessions = await prisma.tableSession.findMany({
     where: {
-      restaurantTableId: restaurantTable.id,
+      restaurantTableId: {
+        in: [restaurantTable.id, allocationRestaurantTable.id],
+      },
     },
     select: {
       id: true,
@@ -173,7 +191,9 @@ async function main() {
 
   await prisma.tableSession.deleteMany({
     where: {
-      restaurantTableId: restaurantTable.id,
+      restaurantTableId: {
+        in: [restaurantTable.id, allocationRestaurantTable.id],
+      },
     },
   });
 

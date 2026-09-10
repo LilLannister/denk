@@ -62,7 +62,7 @@ This document records the technology and architecture decisions that are settled
 
 **Reason:** Restaurant products need durable identity across repeated imports and display-name or price changes. Scoping uniqueness to the restaurant preserves tenant isolation while allowing different restaurants to use the same familiar keys.
 
-**Accepted trade-off:** Stable keys become long-lived operational identifiers and therefore require validation and deliberate change handling. V1 does not introduce global products, variants, categories, tax modeling, or multi-currency catalog abstractions.
+**Accepted trade-off:** Stable keys become long-lived operational identifiers and therefore require validation and deliberate change handling. V1 uses restaurant-scoped categories but does not introduce global products, variants, a global category taxonomy, tax modeling, or multi-currency catalog abstractions.
 
 ### Controlled catalog import
 
@@ -155,6 +155,8 @@ This document records the technology and architecture decisions that are settled
 Every claim, release, and staff quantity correction locks the owning bill-item row and revalidates allocation conservation in the same transaction. A valid, unexpired, unrevoked guest session may mutate only allocations in its own open table session. A guest may release only their own unpaid units; responsibility is never silently transferred between guests. Reassignment is expressed as one guest releasing units and another guest claiming the newly available units.
 
 Staff may increase an open bill line's quantity while allocations exist, but may not reduce it below the total allocated quantity or remove the line until all allocations are released. Payment stages will further protect allocations associated with pending or successful payment attempts.
+
+Until payment state exists, every allocation is unpaid and closing a table session is a terminal lifecycle operation rather than proof of settlement. Closure preserves existing allocations as immutable historical selection records, revokes guest access, and prevents further allocation mutation; it neither deletes those records nor marks them paid. Payment and settlement stages will add an explicit settlement-aware closure rule while preserving allocation and payment history.
 
 **Reason:** An aggregate row per guest and bill item is the smallest model that supports multiple identical units, exact payable calculation, and an understandable claim/release interface without manufacturing one database record per physical unit. Locking the bill item gives claims and staff corrections one serialization boundary, so stale UI state cannot cause over-allocation or invalidate existing responsibility.
 

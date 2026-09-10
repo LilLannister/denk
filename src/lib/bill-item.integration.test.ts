@@ -716,6 +716,87 @@ describe("updating bill item quantities", () => {
 });
 
 describe("removing bill items", () => {
+  it("serializes a concurrent claim with bill-item removal", async () => {
+    const billItem = await addBillItem({
+      userId,
+      restaurantTableId,
+      catalogItemId,
+      quantity: 1,
+    });
+
+    const tableSession = await prisma.tableSession.findFirstOrThrow({
+      where: {
+        restaurantTableId,
+        closedAt: null,
+      },
+    });
+
+    const token = `concurrent-removal-${randomUUID()}`;
+
+    await prisma.guestSession.create({
+      data: {
+        tableSessionId: tableSession.id,
+        tokenHash: hashGuestToken(token),
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+
+    const results = await Promise.allSettled([
+      claimBillItemUnits({
+        publicTableId,
+        token,
+        billItemId: billItem.id,
+        quantity: 1,
+      }),
+      removeBillItem({
+        userId,
+        restaurantTableId,
+        billItemId: billItem.id,
+      }),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+
+    const rejected = results.filter((result) => result.status === "rejected");
+
+    expect(rejected).toHaveLength(1);
+
+    if (rejected[0]?.status === "rejected") {
+      expect(rejected[0].reason).toSatisfy(
+        (error: unknown) =>
+          error instanceof BillItemAllocationConflictError ||
+          error instanceof BillItemAllocationUnavailableError,
+      );
+    }
+
+    const storedBillItem = await prisma.billItem.findUnique({
+      where: {
+        id: billItem.id,
+      },
+      include: {
+        allocations: true,
+      },
+    });
+
+    if (storedBillItem) {
+      expect(storedBillItem.allocations).toHaveLength(1);
+      expect(storedBillItem.allocations[0]).toMatchObject({
+        billItemId: billItem.id,
+        quantity: 1,
+      });
+    } else {
+      await expect(
+        prisma.billItemAllocation.count({
+          where: {
+            billItemId: billItem.id,
+          },
+        }),
+      ).resolves.toBe(0);
+    }
+  });
+
   it("removes an item from the open session", async () => {
     const billItem = await addBillItem({
       userId,

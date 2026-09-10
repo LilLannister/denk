@@ -395,7 +395,17 @@ describe("whole-item allocation", () => {
     ).rejects.toThrow(BillItemAllocationUnavailableError);
   });
 
-  it("rejects allocation after the table session closes", async () => {
+  it("freezes historical allocations after the table session closes", async () => {
+    const allocation = await claimBillItemUnits(
+      {
+        publicTableId,
+        token: guestToken,
+        billItemId,
+        quantity: 1,
+      },
+      now,
+    );
+
     await prisma.tableSession.update({
       where: {
         id: tableSessionId,
@@ -416,6 +426,35 @@ describe("whole-item allocation", () => {
         now,
       ),
     ).rejects.toThrow(GuestAllocationDeniedError);
+
+    await expect(
+      releaseBillItemUnits(
+        {
+          publicTableId,
+          token: guestToken,
+          billItemId,
+          quantity: 1,
+        },
+        now,
+      ),
+    ).rejects.toThrow(GuestAllocationDeniedError);
+
+    await expect(
+      prisma.billItemAllocation.findUniqueOrThrow({
+        where: {
+          id: allocation.id,
+        },
+        select: {
+          guestSessionId: true,
+          billItemId: true,
+          quantity: true,
+        },
+      }),
+    ).resolves.toEqual({
+      guestSessionId,
+      billItemId,
+      quantity: 1,
+    });
   });
 
   it.each([0, -1, 1.5, 2_147_483_648])(
