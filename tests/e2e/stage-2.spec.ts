@@ -316,6 +316,149 @@ test("staff operates a bill across an anonymous guest journey", async ({
   }
 });
 
+test("two anonymous guests allocate the same bill independently", async ({
+  browser,
+}) => {
+  const staffContext = await browser.newContext();
+  const firstGuestContext = await browser.newContext();
+  const secondGuestContext = await browser.newContext();
+
+  try {
+    const staffPage = await staffContext.newPage();
+
+    await staffPage.goto("/staff/sign-in");
+    await staffPage.getByLabel("Email").fill(stage2Fixture.staffEmail);
+    await staffPage.getByLabel("Password").fill(stage2Fixture.staffPassword);
+    await staffPage.getByRole("button", { name: "Sign in" }).click();
+
+    await expect(
+      staffPage.getByRole("heading", { name: "Staff workspace" }),
+    ).toBeVisible();
+
+    const restaurantSection = staffPage
+      .getByRole("heading", {
+        name: stage2Fixture.restaurantName,
+        level: 2,
+      })
+      .locator("..");
+
+    const allocationTable = restaurantSection
+      .getByText(stage2Fixture.allocationTableName, { exact: true })
+      .locator("..");
+
+    const guestTablePath = await allocationTable
+      .getByRole("link", {
+        name: `Open guest page for ${stage2Fixture.allocationTableName}`,
+      })
+      .getAttribute("href");
+
+    expect(guestTablePath).not.toBeNull();
+
+    await allocationTable.getByRole("button", { name: "Open bill" }).click();
+
+    const joinCodeElement = allocationTable.getByText(
+      /^[0-9A-HJKMNP-TV-Z]{8}$/,
+    );
+
+    await expect(joinCodeElement).toBeVisible();
+
+    const joinCode = await joinCodeElement.textContent();
+
+    expect(joinCode).not.toBeNull();
+
+    await allocationTable
+      .getByLabel("Catalog item")
+      .selectOption({ label: "E2E Shared Breakfast — ₺125.50" });
+    await allocationTable.getByLabel("Quantity").fill("2");
+    await allocationTable.getByRole("button", { name: "Add item" }).click();
+
+    await expect(allocationTable.getByText("Bill item added.")).toBeVisible();
+    await expect(
+      allocationTable.getByText("2 × E2E Shared Breakfast at ₺125.50"),
+    ).toBeVisible();
+
+    const firstGuestPage = await firstGuestContext.newPage();
+    const secondGuestPage = await secondGuestContext.newPage();
+
+    for (const guestPage of [firstGuestPage, secondGuestPage]) {
+      await guestPage.goto(guestTablePath!);
+      await guestPage
+        .getByLabel("Eight-character join code")
+        .fill(joinCode!.toLowerCase());
+      await guestPage.getByRole("button", { name: "Join table" }).click();
+
+      await expect(
+        guestPage.getByRole("heading", {
+          name: stage2Fixture.allocationTableName,
+        }),
+      ).toBeVisible();
+    }
+
+    await firstGuestPage
+      .getByRole("button", {
+        name: "Claim one E2E Shared Breakfast",
+      })
+      .click();
+
+    await expect(
+      firstGuestPage.getByText("Available: 1 · Yours: 1"),
+    ).toBeVisible();
+    await expect(firstGuestPage.getByText("Your share: ₺125.50")).toBeVisible();
+
+    await secondGuestPage
+      .getByRole("button", {
+        name: "Claim one E2E Shared Breakfast",
+      })
+      .click();
+
+    await expect(
+      secondGuestPage.getByText("Available: 0 · Yours: 1"),
+    ).toBeVisible();
+    await expect(
+      secondGuestPage.getByText("Your share: ₺125.50"),
+    ).toBeVisible();
+
+    await firstGuestPage.reload();
+
+    for (const guestPage of [firstGuestPage, secondGuestPage]) {
+      await expect(guestPage.getByText("Claimed: 2 of 2")).toBeVisible();
+      await expect(
+        guestPage.getByText("Available: 0 · Yours: 1"),
+      ).toBeVisible();
+      await expect(guestPage.getByText("Bill total: ₺251.00")).toBeVisible();
+      await expect(guestPage.getByText("Claimed: ₺251.00")).toBeVisible();
+      await expect(guestPage.getByText("Remaining: ₺0.00")).toBeVisible();
+      await expect(guestPage.getByText("Your share: ₺125.50")).toBeVisible();
+    }
+
+    staffPage.once("dialog", async (dialog) => {
+      expect(dialog.message()).toBe(
+        "Close this bill? Guests will immediately lose access.",
+      );
+
+      await dialog.accept();
+    });
+
+    await allocationTable.getByRole("button", { name: "Close bill" }).click();
+
+    await expect(
+      allocationTable.getByText("Table session closed."),
+    ).toBeVisible();
+
+    for (const guestPage of [firstGuestPage, secondGuestPage]) {
+      await guestPage.reload();
+
+      await expect(
+        guestPage.getByRole("heading", { name: "Join table" }),
+      ).toBeVisible();
+    }
+  } finally {
+    await staffContext.close();
+    await firstGuestContext.close();
+    await secondGuestContext.close();
+  }
+});
+
 test("Admin manages a table without changing its guest identity", async ({
   browser,
 }) => {

@@ -84,6 +84,20 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await prisma.billItemAllocation.deleteMany({
+    where: {
+      billItem: {
+        tableSession: {
+          restaurantTable: {
+            restaurantId: {
+              in: [restaurantId, otherRestaurantId],
+            },
+          },
+        },
+      },
+    },
+  });
+
   await prisma.restaurant.deleteMany({
     where: {
       id: {
@@ -535,5 +549,101 @@ describe("closing and reopening a table session", () => {
         restaurantTableId,
       }),
     ).rejects.toBeInstanceOf(TableSessionNotOpenError);
+  });
+
+  it("preserves allocations as historical records when closing", async () => {
+    const opened = await openTableSession({
+      userId,
+      restaurantTableId,
+    });
+
+    const billItem = await prisma.billItem.create({
+      data: {
+        tableSessionId: opened.tableSession.id,
+        name: "Allocated item",
+        quantity: 2,
+        unitPriceMinor: 10_000,
+      },
+    });
+
+    const guestSession = await prisma.guestSession.create({
+      data: {
+        tableSessionId: opened.tableSession.id,
+        tokenHash: `allocated-close-${randomUUID()}`,
+        expiresAt: new Date("2099-01-01T00:00:00.000Z"),
+      },
+    });
+
+    const allocation = await prisma.billItemAllocation.create({
+      data: {
+        tableSessionId: opened.tableSession.id,
+        billItemId: billItem.id,
+        guestSessionId: guestSession.id,
+        quantity: 1,
+      },
+    });
+
+    const closedAt = new Date("2026-09-10T12:00:00.000Z");
+
+    await expect(
+      closeTableSession({
+        userId,
+        restaurantTableId,
+        now: closedAt,
+      }),
+    ).resolves.toMatchObject({
+      id: opened.tableSession.id,
+      closedAt,
+      joinCodeExpiresAt: closedAt,
+    });
+
+    await expect(
+      prisma.tableSession.findUniqueOrThrow({
+        where: {
+          id: opened.tableSession.id,
+        },
+        select: {
+          closedAt: true,
+          guestSessions: {
+            where: {
+              id: guestSession.id,
+            },
+            select: {
+              revokedAt: true,
+            },
+          },
+          billItems: {
+            where: {
+              id: billItem.id,
+            },
+            select: {
+              allocations: {
+                select: {
+                  id: true,
+                  quantity: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    ).resolves.toEqual({
+      closedAt,
+      guestSessions: [
+        {
+          revokedAt: closedAt,
+        },
+      ],
+      billItems: [
+        {
+          allocations: [
+            {
+              id: allocation.id,
+              quantity: 1,
+            },
+          ],
+        },
+      ],
+    });
   });
 });
