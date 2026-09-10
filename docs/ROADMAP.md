@@ -331,42 +331,58 @@ The transition is complete: table-session integration coverage proves closure pr
 
 ## Stage 5 — Shared and Partial Allocation
 
+**Status: Planned.**
+
 ### Goal
 
-Support shared dishes and partial responsibility without rounding errors, over-allocation, or an interface that requires guests to calculate externally.
+Support mixed whole-item and monetary responsibility on the same bill without rounding errors, double counting, over-allocation, or an interface that requires guests to calculate externally. Every responsibility remains backed by specific bill-item value, including responsibility created through a bill-total convenience flow.
 
 ### What I Will Implement
 
-1. Define the V1 representation for sharing an item or unit, including how portions are expressed and how exact minor-unit amounts are assigned.
-2. Establish a deterministic remainder/rounding rule so the sum of portions always equals the item's price.
-3. Extend allocation services to add, change, and release unpaid partial allocations while enforcing the item's remaining allocatable amount.
-4. Support practical cases such as two people sharing a dish, four people sharing a bottle, and one guest paying multiple shares.
-5. Present available, allocated, and paid portions clearly in the shared bill UI.
-6. Preserve a single server-derived payable calculation across whole and partial allocations.
+1. Replace the whole-unit-only representation with one unified item-backed allocation model that can preserve existing whole claims and also record positive exact minor-unit responsibility against a bill item. A guest may combine whole-unit and partial claims across different items, but no value may be represented twice.
+2. Treat a physical unit as the boundary for item splitting. For a line containing two pizzas at ₺60 each, a guest may claim one whole ₺60 unit or share one ₺60 unit; an item-split command must not silently split the full ₺120 line.
+3. Support three guest workflows over the same underlying item-backed records: claim whole units, claim an exact amount from an available unit, and divide an available unit into an explicit number of equal shares. A guest claims only their own responsibility and cannot assign responsibility to another anonymous guest.
+4. Implement “split total” as a convenience allocator over currently unclaimed bill-item value, not as an independent total-level ownership system. Equal or custom total responsibility must be deterministically distributed across available items, so mixed behavior—such as one guest claiming ₺60 of a burger while another claims one whole pizza—remains valid and explainable.
+5. Store and calculate money only in integer minor units. For an equal split, calculate `base = floor(amount / shareCount)` and distribute the remainder one minor unit at a time in stable share order. For example, ₺100 split three ways is ₺33.34, ₺33.33, and ₺33.33. Reject a share count that would create a zero-value share and impose a reviewed V1 upper bound on split count.
+6. Extend allocation services to claim, change, and release only the current guest's unpaid responsibility. Every mutation must authenticate the guest, validate the open table session, ignore client-supplied prices/totals, lock rows in one documented order, recalculate authoritative availability, and commit allocation plus derived-state changes atomically.
+7. Define the universal conservation rule for every item as `allocated minor units + available minor units = quantity × snapshotted unit price`, and for the bill as `sum of guest responsibility + unclaimed bill value = authoritative bill total`. Validate intermediate arithmetic with safe-integer rules and reject corrupt stored state rather than presenting an invented result.
+8. Serialize whole claims, partial claims, total-distribution claims, releases, and staff corrections through the same table-session and bill-item locking order. Simultaneous requests for the last available value must have exactly one valid serialized outcome; stale, duplicate, or losing requests must not create extra responsibility and must return a clear conflict suitable for refresh and retry.
+9. Preserve the existing staff correction boundary in monetary terms: staff may increase an open line, but may not reduce or remove it below its allocated value. Closing freezes allocations as unpaid historical responsibility, revokes guest mutation access, and does not imply payment or settlement.
+10. Present each line's total, claimed, available, and current guest amount, plus bill-level current-guest responsibility and unclaimed total. Refresh authoritative state immediately after every mutation. Stage 5 must remain correct with refresh delayed or disabled; Stage 6 adds continuous controlled polling so separate active browsers observe one another automatically.
 
 ### Engineering Concepts I Should Understand
 
-- allocation models: ratios versus concrete monetary amounts;
-- deterministic rounding and conservation of money;
-- invariants across whole and partial claims;
-- why financial rules belong outside presentation code.
+- item-backed monetary allocation versus independent bill-level ownership;
+- physical-unit boundaries for quantity greater than one;
+- deterministic integer division, stable remainder assignment, and conservation of money;
+- invariants across whole, partial, equal-share, and total-distribution commands;
+- transaction serialization, stable row-lock ordering, stale-state conflicts, and deadlock avoidance;
+- authoritative mutation results versus live browser refresh; and
+- why financial rules belong outside presentation and polling code.
 
 ### Key Tests / Verification
 
-- Two-way and four-way splits reconcile exactly, including prices that do not divide evenly.
-- Whole plus partial allocations can never exceed the item total.
-- Changing or releasing an unpaid portion updates all derived totals correctly.
-- A guest can cover more than one portion without inventing or losing money.
-- Property-style or table-driven tests cover many prices, quantities, and split counts and always preserve the total.
+- Schema tests enforce positive amounts, same-table-session ownership, uniqueness/idempotency decisions, deletion protection, and every relationship needed to prevent cross-session records.
+- Table-driven and property-style tests cover boundary prices, quantities, custom amounts, and split counts—including non-divisible values—and always conserve every minor unit with deterministic remainder ownership.
+- Whole, partial, equal-share, and total-distribution commands coexist on one bill without exceeding any physical unit, line total, or bill total. Quantity-greater-than-one cases prove that one unit and the complete line cannot be confused.
+- One guest may combine multiple claims; multiple guests may claim different whole or partial values; and no guest may inspect, change, release, or assign another guest's ownership.
+- Tenant, table-session, bill-item, guest-session, expiry, revocation, and closed-session boundaries reject invalid access without leaking protected identity or state.
+- Changing or releasing unpaid responsibility updates item-level, current-guest, and bill-level totals exactly. Repeated/stale submissions either follow a documented idempotent result or fail clearly without repeating a mutation.
+- Concurrent final-value claims, partial-versus-whole claims, claim-versus-release, claim-versus-staff-reduction/removal, and competing total-distribution requests are exercised repeatedly. Each race produces only valid serialized outcomes, preserves conservation, and leaves no orphaned or duplicate records.
+- Staff corrections cannot reduce a line below allocated value; safe increases expose only new available value. Closure racing with allocation mutation has one explainable outcome and terminal closure preserves immutable history while revoking access.
+- Service/projection tests inject unsafe or inconsistent stored aggregates and verify fail-closed behavior rather than unsafe arithmetic or misleading totals.
+- Playwright uses independent guest browser contexts to verify mixed preferences: custom Burger responsibility, a whole Pizza claim, equal item sharing, total-split convenience, releases, losing-race conflict messaging, immediate post-mutation refresh, staff conflict behavior, and exact final reconciliation.
+- Stage 5 browser coverage explicitly proves authoritative state after mutations and manual reloads. Stage 6 separately proves continuous visibility across browsers within the polling window, inactive-page behavior, transient-failure recovery, and non-overlapping polling.
 
 ### Suggested Git Checkpoints
 
-- `feat: support partial item allocation`
-- `test: verify split rounding and conservation`
+- `feat: add item-backed partial allocations`
+- `feat: add deterministic bill-split allocation`
+- `test: verify Stage 5 conservation and concurrency`
 
 ### Exit Condition
 
-Whole and shared allocations work together, every split has a deterministic explanation, and all per-guest and remaining amounts sum exactly to the authoritative bill total.
+Whole, partial, equal-share, and bill-total convenience flows work together over one item-backed source of truth. Every minor unit has one deterministic explanation; all guest responsibilities plus unclaimed value equal the authoritative bill total; simultaneous mutations cannot create collisions or impossible state; and the complete mixed multi-guest journey passes service, concurrency, projection, and browser verification. These records express unpaid responsibility only—payment remains Stage 7 and settlement remains Stage 8.
 
 ## Stage 6 — Concurrency and Shared-State Refresh
 

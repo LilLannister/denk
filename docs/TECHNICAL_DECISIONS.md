@@ -162,6 +162,30 @@ Until payment state exists, every allocation is unpaid and closing a table sessi
 
 **Accepted trade-off:** Whole-unit allocation cannot represent splitting one unit among several guests; that is intentionally deferred to Stage 5. PostgreSQL cannot express the cross-row allocation sum with a simple check constraint, so transactional locking and integration tests enforce conservation. Retrying the same non-idempotent quantity command could repeat it; Stage 4 UI must disable duplicate submissions and refresh authoritative state, while explicit request idempotency is introduced where the payment lifecycle requires it.
 
+### Unified item-backed monetary responsibility
+
+**Decision:** Stage 5 extends allocation into one item-backed monetary responsibility model. Whole-unit, partial-item, equal-share, and bill-total convenience actions must all resolve to positive integer minor-unit allocations backed by specific `BillItem` value. They are not separate ownership systems and cannot overlap the same value. A guest may mix strategies across a bill—for example, one guest may claim ₺60 of a ₺100 burger while another claims one ₺60 pizza—but may create or release only their own unpaid responsibility.
+
+An item split targets one physical unit at its snapshotted unit price, not an entire multi-quantity line unless the command explicitly selects that many units. “Split total” deterministically consumes only currently unclaimed item-backed value and records the resulting item allocations; it never creates free-floating bill-level responsibility. Money is never represented as a floating-point value or accepted from the client as price authority.
+
+For equal division, use integer minor-unit arithmetic with stable remainder assignment: each share receives `floor(amount / shareCount)`, and the first `amount mod shareCount` stable share positions receive one additional minor unit. A split count that creates a zero-value share is invalid. Persisted allocation amounts, their bill-item backing, and a stable ordering/identity make every result reproducible and explainable after refresh.
+
+For every bill item, `allocatedMinor + availableMinor` must equal `quantity × unitPriceMinor`; across the bill, all guest responsibility plus all unclaimed value must equal the authoritative bill total. Services derive every total from stored bill snapshots and allocation records, validate safe integer arithmetic, and fail closed on impossible persisted state.
+
+**Reason:** A single backing model permits guests to combine natural restaurant behaviors without double counting or introducing two competing definitions of ownership. Exact minor-unit records make arbitrary custom responsibility and non-divisible equal splits reconcilable, while item backing keeps staff corrections, payment preparation, history, and explanations tied to the restaurant's actual bill.
+
+**Accepted trade-off:** A total split may span multiple bill items and therefore needs a deterministic allocation order and clearer UI explanation than an independent bill-level number. Stage 5 records responsibility, not payment; pending/successful payment protection and settlement remain later decisions. V1 will use a reviewed maximum split count and will not allow one anonymous guest to assign amounts to another guest.
+
+### Allocation serialization and live visibility boundary
+
+**Decision:** Every operation that can change allocated or available value—whole claim, partial claim, equal split, total distribution, release, and staff correction—must lock the open table session and affected bill items in one documented stable order, then re-read and validate authoritative state inside the transaction. Multi-item total distribution locks all affected bill items in stable identifier order before writing. A stale browser is never mutation authority. A losing concurrent request returns a specific conflict, performs no partial write, and triggers an immediate authoritative refresh.
+
+Stage 5 proves database safety under simultaneous operations and refreshes the initiating browser immediately after every mutation. Stage 6 adds controlled polling, approximately every two seconds while the shared view is active, so independent browsers observe one another without manual reload. Polling requests must not overlap, inactive views pause or reduce polling, and transient read failures must preserve the last confirmed state while retrying. Financial correctness must remain identical with polling slow, disabled, or unavailable.
+
+**Reason:** Live presentation and concurrent correctness are related user experiences but different engineering guarantees. Only transactions and server validation can prevent two guests from consuming the same final value; polling merely reduces how long another browser displays stale availability.
+
+**Accepted trade-off:** Two guests may briefly see the same available value and one may receive a conflict after the other wins. Controlled polling is intentionally chosen over WebSockets or another realtime subsystem for V1. If measured UX later requires push delivery, the transport may change without changing allocation invariants or authority.
+
 ### Controlled polling
 
 **Decision:** Poll approximately every two seconds only while a shared bill view is active, and refresh immediately after relevant mutations.
